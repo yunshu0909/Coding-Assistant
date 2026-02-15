@@ -1,0 +1,31 @@
+# 本地环境变量（包含敏感信息，不要提交）
+.env
+
+# 本地配置文件
+*.local.json
+config.local.js
+
+# 依赖目录
+node_modules/
+
+# 构建输出
+dist/
+build/
+
+# 测试相关
+test-results/
+coverage/
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# IDE配置
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 日志
+*.log
+npm-debug.log*
