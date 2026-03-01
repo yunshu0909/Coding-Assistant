@@ -19,6 +19,7 @@ import ApiConfigPage from './pages/ApiConfigPage'
 import ProjectInitPage from './pages/ProjectInitPage'
 import PermissionModePage from './pages/PermissionModePage'
 import McpPage from './pages/McpPage'
+import ClaudeCodePage from './pages/ClaudeCodePage'
 import Toast from './components/Toast'
 import { dataStore } from './store/data'
 
@@ -29,10 +30,12 @@ export default function App() {
   const [initialSkillManagerPage, setInitialSkillManagerPage] = useState(null)
   // Toast 提示消息 { message, type }
   const [toast, setToast] = useState(null)
-  // 活跃模块：'skills' | 'mcp' | 'project-init' | 'usage' | 'api' | 'permission'
+  // 活跃模块：'skills' | 'mcp' | 'claude-code' | 'project-init' | 'usage' | 'api' | 'permission'
   const [activeModule, setActiveModule] = useState('skills')
   // MCP 页面是否已访问（已访问后保持挂载，支持切回时静默刷新）
   const [hasVisitedMcp, setHasVisitedMcp] = useState(false)
+  // Claude Code 管理页面是否已访问（keep-alive）
+  const [hasVisitedClaudeCode, setHasVisitedClaudeCode] = useState(false)
   // 技能模块刷新信号（自动增量导入新增 skill 后触发）
   const [skillsRefreshSignal, setSkillsRefreshSignal] = useState(0)
 
@@ -159,6 +162,9 @@ export default function App() {
     if (activeModule === 'mcp') {
       setHasVisitedMcp(true)
     }
+    if (activeModule === 'claude-code') {
+      setHasVisitedClaudeCode(true)
+    }
   }, [activeModule])
 
   // 始终渲染 WorkbenchLayout；加载中时内容区显示 loading
@@ -177,6 +183,11 @@ export default function App() {
         {(activeModule === 'mcp' || hasVisitedMcp) && (
           <div style={{ display: activeModule === 'mcp' ? 'block' : 'none', height: '100%' }}>
             <McpPage isActive={activeModule === 'mcp'} />
+          </div>
+        )}
+        {(activeModule === 'claude-code' || hasVisitedClaudeCode) && (
+          <div style={{ display: activeModule === 'claude-code' ? 'block' : 'none', height: '100%' }}>
+            <ClaudeCodePage isActive={activeModule === 'claude-code'} />
           </div>
         )}
         {activeModule === 'usage' && <UsageMonitorModule />}

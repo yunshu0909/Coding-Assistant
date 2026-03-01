@@ -31,6 +31,7 @@ function WorkbenchLayout({ children, activeModule, onModuleChange }) {
     { id: 'skills', label: 'Skills 管理', icon: '🛠️' },
     { id: 'mcp', label: 'MCP 管理', icon: '📡' },
     { id: 'project-init', label: '新建项目', icon: '🚀' },
+    { id: 'claude-code', label: 'Claude Code', icon: '💻' },
     { id: 'usage', label: '用量监测', icon: '📊' },
     { id: 'api', label: 'API 配置', icon: '🔌' },
     { id: 'permission', label: '启动模式', icon: '🛡️' }

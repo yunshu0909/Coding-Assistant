@@ -30,6 +30,7 @@ const { registerProjectInitHandlers } = require('./handlers/registerProjectInitH
 const { registerPermissionModeHandlers } = require('./handlers/permissionModeHandlers')
 const { registerMcpHandlers } = require('./handlers/registerMcpHandlers')
 const { registerRepoWatcherHandlers } = require('./handlers/registerRepoWatcherHandlers')
+const { registerClaudeCodeHandlers } = require('./handlers/registerClaudeCodeHandlers')
 const { resolveProviderRegistryFilePath } = require('./services/providerRegistryPathService')
 const { ensureBuiltinProviderRegistryInstalled } = require('./services/builtinMcpInstallerService')
 
@@ -104,7 +105,6 @@ function createWindow() {
   // Load the app
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
-    mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
@@ -1009,5 +1009,12 @@ registerPermissionModeHandlers({
  * 注册 MCP 管理相关 IPC handlers
  */
 registerMcpHandlers({
+  ipcMain,
+})
+
+/**
+ * 注册 V0.15 Claude Code 管理相关 IPC handlers
+ */
+registerClaudeCodeHandlers({
   ipcMain,
 })
