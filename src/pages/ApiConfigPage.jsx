@@ -20,42 +20,6 @@ import StateView from '../components/StateView/StateView'
 
 const PROVIDER_REFRESH_INTERVAL_MS = 3000
 
-// 供应商基础配置（兜底显示用：当后端不支持动态列表时）
-const PROVIDER_BASES = [
-  {
-    id: 'official',
-    name: 'Claude Official',
-    url: 'https://www.anthropic.com/claude-code',
-    icon: 'A',
-    color: '#6b5ce7',
-    supportsToken: false,
-  },
-  {
-    id: 'qwen',
-    name: 'Qwen3 Coder Plus',
-    url: 'https://dashscope.aliyuncs.com/apps/anthropic',
-    icon: 'Q',
-    color: '#0891b2',
-    supportsToken: true,
-  },
-  {
-    id: 'kimi',
-    name: 'Kimi For Coding',
-    url: 'https://api.kimi.com/coding/',
-    icon: 'K',
-    color: '#4f46e5',
-    supportsToken: true,
-  },
-  {
-    id: 'aicodemirror',
-    name: 'AICodeMirror',
-    url: 'https://api.aicodemirror.com/api/claudecode',
-    icon: 'X',
-    color: '#d97706',
-    supportsToken: true,
-  },
-]
-
 /**
  * 判断供应商是否支持 API Key 编辑
  * @param {{id: string, supportsToken?: boolean}} provider - 供应商数据
@@ -102,8 +66,8 @@ export default function ApiConfigPage() {
   const [isSavingToken, setIsSavingToken] = useState(false)
   // Toast 提示 { message: string, type: 'info' | 'success' | 'error' | 'warning' }
   const [toast, setToast] = useState(null)
-  // 供应商数据（包含自定义 token）
-  const [providers, setProviders] = useState(PROVIDER_BASES)
+  // 供应商数据（包含自定义 token），完全由后端 listProviderDefinitions 驱动
+  const [providers, setProviders] = useState([])
   // 是否是从 custom 档检测到的
   const [isCustomDetected, setIsCustomDetected] = useState(false)
   // 环境变量文件路径提示
@@ -533,7 +497,7 @@ function ProviderCard({
             />
           </div>
           <p className="field-note">
-            API Key 与当前供应商只保存至 {envPathHint}（环境变量）
+            API Key 将保存至 {envPathHint}（环境变量），请确保该文件已加入 .gitignore，避免泄露密钥
           </p>
           <div className="actions">
             <Button variant="secondary" size="sm" disabled={isSavingToken} onClick={onCancelEdit}>

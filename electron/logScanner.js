@@ -55,8 +55,10 @@ async function scanLogFilesInRange(basePath, startTime, endTime, options = {}) {
           const stat = await fs.stat(fullPath)
           const mtime = stat.mtime
 
-          // 采用半开区间，避免边界重复计入
-          if (mtime < startTime || mtime >= endTime) {
+          // mtime 下界精确匹配；上界加 12h 缓冲，防止跨午夜对话的文件被漏掉
+          // （日志条目已在 scanClaudeLogs / scanCodexLogs 里按 timestamp 精确过滤）
+          const mtimeUpperBound = new Date(endTime.getTime() + 12 * 60 * 60 * 1000)
+          if (mtime < startTime || mtime >= mtimeUpperBound) {
             continue
           }
 
