@@ -195,8 +195,10 @@ export default function ManagePage({ onReimport, onNavigateToConfig, refreshSign
   const filteredSkills = useMemo(() => {
     let result = skills
 
-    // 标签过滤
-    if (activeTagFilter) {
+    // 标签过滤：__untagged__ 筛出无标签技能，其余按标签 ID 精确匹配
+    if (activeTagFilter === '__untagged__') {
+      result = result.filter((s) => !skillTags[s.id])
+    } else if (activeTagFilter) {
       result = result.filter((s) => skillTags[s.id] === activeTagFilter)
     }
 
@@ -492,6 +494,7 @@ export default function ManagePage({ onReimport, onNavigateToConfig, refreshSign
         <TagFilterChips
           tags={tags}
           skillTags={skillTags}
+          totalSkillCount={skills.length}
           activeTagId={activeTagFilter}
           onSelect={setActiveTagFilter}
         />

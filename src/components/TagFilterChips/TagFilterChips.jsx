@@ -17,10 +17,11 @@ import './TagFilterChips.css'
  * 标签筛选 Chips
  * @param {Array} tags - 标签定义列表 [{id, name}]
  * @param {Object} skillTags - 技能-标签映射 {skillId: tagId}
+ * @param {number} totalSkillCount - 技能总数（用于计算未标记数量）
  * @param {string|null} activeTagId - 当前筛选标签 ID（null = 全部）
  * @param {Function} onSelect - 选中回调 (tagId|null) => void
  */
-export default function TagFilterChips({ tags, skillTags, activeTagId, onSelect }) {
+export default function TagFilterChips({ tags, skillTags, totalSkillCount, activeTagId, onSelect }) {
   // 溢出的标签索引起点
   const [overflowStart, setOverflowStart] = useState(null)
   // +N 下拉是否展开
@@ -83,10 +84,14 @@ export default function TagFilterChips({ tags, skillTags, activeTagId, onSelect 
     return () => document.removeEventListener('click', handleClick)
   }, [moreOpen])
 
-  // 「全部」chip + 各标签 chip
+  // 未标记技能数量
+  const untaggedCount = totalSkillCount - Object.keys(skillTags).length
+
+  // 「全部」chip + 各标签 chip + 未标记 chip（仅在有未标记技能时显示）
   const allChips = [
     { id: null, name: '全部', count: null },
     ...tags.map((t) => ({ id: t.id, name: t.name, count: tagCounts[t.id] || 0 })),
+    ...(untaggedCount > 0 ? [{ id: '__untagged__', name: '未标记', count: untaggedCount }] : []),
   ]
 
   // 可见 / 溢出分割
