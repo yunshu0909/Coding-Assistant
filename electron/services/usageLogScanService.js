@@ -53,27 +53,15 @@ function normalizeModelName(model) {
     return 'unknown'
   }
 
-  const lowerModel = model.toLowerCase()
+  // Claude 完整格式：claude-{tier}-{major}-{minor}[-datestring]
+  const claudeMatch = model.match(/^claude-([a-z]+)-(\d+)-(\d+)(?:-\d{8,})?$/i)
+  if (claudeMatch) {
+    const tier = claudeMatch[1].charAt(0).toUpperCase() + claudeMatch[1].slice(1).toLowerCase()
+    return `Claude ${tier} ${claudeMatch[2]}.${claudeMatch[3]}`
+  }
 
-  if (lowerModel.includes('claude-opus') || lowerModel.includes('opus')) return 'opus'
-  if (lowerModel.includes('claude-sonnet') || lowerModel.includes('sonnet')) return 'sonnet'
-  if (lowerModel.includes('claude-haiku') || lowerModel.includes('haiku')) return 'haiku'
-  if (lowerModel.includes('claude')) return 'claude'
-
-  if (lowerModel.includes('gpt-5') || lowerModel.includes('gpt5')) return 'gpt-5'
-  if (lowerModel.includes('gpt-4o')) return 'gpt-4o'
-  if (lowerModel.includes('gpt-4')) return 'gpt-4'
-  if (lowerModel.includes('gpt-3.5') || lowerModel.includes('gpt3')) return 'gpt-3.5'
-
-  if (lowerModel.includes('kimi')) return 'kimi'
-  if (lowerModel.includes('deepseek')) return 'deepseek'
-  if (lowerModel.includes('gemini')) return 'gemini'
-  if (lowerModel.includes('qwen')) return 'qwen'
-  if (lowerModel.includes('yi')) return 'yi'
-  if (lowerModel.includes('llama')) return 'llama'
-  if (lowerModel.includes('mistral')) return 'mistral'
-
-  return lowerModel.split(':')[0].split('-').slice(0, 2).join('-')
+  // 非 Claude 模型：保留原始名称
+  return model
 }
 
 /**
@@ -265,9 +253,17 @@ async function scanCodexLogs(start, end, deps = {}) {
 
   for (const file of scanResult.files || []) {
     const sessionId = extractCodexSessionId(file.path)
-    const state = sessionSnapshots.get(sessionId) || { beforeWindow: null, inWindow: null }
+    const state = sessionSnapshots.get(sessionId) || { beforeWindow: null, inWindow: null, model: null }
 
     for (const line of file.lines || []) {
+      // 从 turn_context 事件提取模型名称（token_count 自身不带 model）
+      try {
+        const parsed = JSON.parse(line)
+        if (parsed.type === 'turn_context' && parsed.payload?.model) {
+          state.model = parsed.payload.model
+        }
+      } catch { /* ignore */ }
+
       const snapshot = parseCodexTokenSnapshot(line)
       if (!snapshot?.timestamp) continue
 
@@ -308,7 +304,7 @@ async function scanCodexLogs(start, end, deps = {}) {
 
     records.push({
       timestamp: state.inWindow.timestamp,
-      model: state.inWindow.model,
+      model: state.model || 'codex',
       input: deltaNonCachedInput,
       output: deltaOutput,
       cacheRead: deltaCacheRead,

@@ -137,7 +137,8 @@ export function parseCodexTokenSnapshot(line) {
 
 /**
  * 标准化模型名称
- * 将完整模型名称转换为系列名称（如 claude-sonnet-4-5-20250929 -> sonnet）
+ * Claude 模型做可读化：claude-opus-4-6 → Claude Opus 4.6
+ * 非 Claude 模型保留原始名称，不同版本不合并
  * @param {string} model - 原始模型名称
  * @returns {string} 标准化后的模型名称
  */
@@ -146,61 +147,15 @@ function normalizeModelName(model) {
     return 'unknown';
   }
 
-  const lowerModel = model.toLowerCase();
-
-  // Claude 模型系列
-  if (lowerModel.includes('claude-opus') || lowerModel.includes('opus')) {
-    return 'opus';
-  }
-  if (lowerModel.includes('claude-sonnet') || lowerModel.includes('sonnet')) {
-    return 'sonnet';
-  }
-  if (lowerModel.includes('claude-haiku') || lowerModel.includes('haiku')) {
-    return 'haiku';
-  }
-  if (lowerModel.includes('claude')) {
-    return 'claude';
+  // Claude 完整格式：claude-{tier}-{major}-{minor}[-datestring]
+  const claudeMatch = model.match(/^claude-([a-z]+)-(\d+)-(\d+)(?:-\d{8,})?$/i);
+  if (claudeMatch) {
+    const tier = claudeMatch[1].charAt(0).toUpperCase() + claudeMatch[1].slice(1).toLowerCase();
+    return `Claude ${tier} ${claudeMatch[2]}.${claudeMatch[3]}`;
   }
 
-  // GPT 模型系列
-  if (lowerModel.includes('gpt-5') || lowerModel.includes('gpt5')) {
-    return 'gpt-5';
-  }
-  if (lowerModel.includes('gpt-4o')) {
-    return 'gpt-4o';
-  }
-  if (lowerModel.includes('gpt-4')) {
-    return 'gpt-4';
-  }
-  if (lowerModel.includes('gpt-3.5') || lowerModel.includes('gpt3')) {
-    return 'gpt-3.5';
-  }
-
-  // 其他模型
-  if (lowerModel.includes('kimi')) {
-    return 'kimi';
-  }
-  if (lowerModel.includes('deepseek')) {
-    return 'deepseek';
-  }
-  if (lowerModel.includes('gemini')) {
-    return 'gemini';
-  }
-  if (lowerModel.includes('qwen')) {
-    return 'qwen';
-  }
-  if (lowerModel.includes('yi')) {
-    return 'yi';
-  }
-  if (lowerModel.includes('llama')) {
-    return 'llama';
-  }
-  if (lowerModel.includes('mistral')) {
-    return 'mistral';
-  }
-
-  // 返回原始名称（去除版本号）
-  return lowerModel.split(':')[0].split('-').slice(0, 2).join('-');
+  // 非 Claude 模型：保留原始名称
+  return model;
 }
 
 /**

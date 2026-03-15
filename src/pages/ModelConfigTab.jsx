@@ -108,6 +108,32 @@ export default function ModelConfigTab({ onToast }) {
   }, [loadConfig])
 
   /**
+   * 切回"跟随账户默认"（写空字符串，Claude Code 会 fallback 到账户默认模型）
+   */
+  const handleResetToDefault = async () => {
+    if (!isModelConfigured) return
+    if (isSwitching) return
+
+    try {
+      setIsSwitching(true)
+      const result = await window.electronAPI.setModelConfig('model', '')
+
+      if (result.success) {
+        setCurrentModel(null)
+        setIsModelConfigured(false)
+        setCustomInput('')
+        onToast('已切换为跟随账户默认', 'success')
+      } else {
+        onToast(result.error || '切换失败，无法写入配置文件', 'error')
+      }
+    } catch (err) {
+      onToast(err?.message || '切换失败', 'error')
+    } finally {
+      setIsSwitching(false)
+    }
+  }
+
+  /**
    * 选择预设模型
    * @param {string} modelId - 模型别名
    * @param {string} displayName - 显示名称
@@ -276,6 +302,18 @@ export default function ModelConfigTab({ onToast }) {
         <div className="model-column">
           <div className="column-title">默认模型</div>
           <div className="radio-list">
+            {/* 跟随账户默认选项 */}
+            <label
+              className={`radio-item ${!isModelConfigured ? 'is-selected' : ''} ${isSwitching ? 'is-disabled' : ''}`}
+              onClick={() => !isSwitching && handleResetToDefault()}
+              data-testid="model-radio-default"
+            >
+              <span className="radio-circle" />
+              <span className="radio-label radio-label--text">跟随账户默认</span>
+              <span className="radio-sublabel">自动</span>
+            </label>
+            <div className="radio-list-divider" />
+
             {PRESET_MODELS.map((model) => (
               <label
                 key={model.id}

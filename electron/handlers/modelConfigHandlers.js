@@ -83,12 +83,16 @@ async function getModelConfig(pathExists) {
     const model = data?.model
     const effortLevel = data?.effortLevel
 
+    // 空字符串视为未配置（"跟随账户默认"）
+    const modelConfigured = typeof model === 'string' && model !== ''
+    const effortConfigured = typeof effortLevel === 'string' && effortLevel !== ''
+
     return {
       success: true,
-      model: typeof model === 'string' ? model : null,
-      effortLevel: typeof effortLevel === 'string' ? effortLevel : null,
-      isModelConfigured: typeof model === 'string',
-      isEffortConfigured: typeof effortLevel === 'string',
+      model: modelConfigured ? model : null,
+      effortLevel: effortConfigured ? effortLevel : null,
+      isModelConfigured: modelConfigured,
+      isEffortConfigured: effortConfigured,
       error: null,
       errorCode: null,
     }
@@ -118,8 +122,15 @@ async function setModelConfig(field, value, pathExists) {
     }
   }
 
-  // 验证值
-  if (typeof value !== 'string' || value.trim() === '') {
+  // 验证值（model 允许空字符串，表示"跟随账户默认"）
+  if (typeof value !== 'string') {
+    return {
+      success: false,
+      error: '参数错误：value 必须是字符串',
+      errorCode: 'INVALID_VALUE',
+    }
+  }
+  if (field !== 'model' && value.trim() === '') {
     return {
       success: false,
       error: '参数错误：value 必须是非空字符串',

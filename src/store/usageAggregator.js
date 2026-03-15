@@ -205,9 +205,17 @@ async function scanCodexLogs(start, end) {
     // 解析每个文件
     for (const file of result.files) {
       const sessionId = extractCodexSessionId(file.path);
-      const state = sessionSnapshots.get(sessionId) || { beforeWindow: null, inWindow: null };
+      const state = sessionSnapshots.get(sessionId) || { beforeWindow: null, inWindow: null, model: null };
 
       for (const line of file.lines) {
+        // 从 turn_context 事件提取模型名称（token_count 自身不带 model）
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.type === 'turn_context' && parsed.payload?.model) {
+            state.model = parsed.payload.model;
+          }
+        } catch { /* ignore */ }
+
         const snapshot = parseCodexTokenSnapshot(line);
         if (!snapshot?.timestamp) {
           continue;
@@ -256,7 +264,7 @@ async function scanCodexLogs(start, end) {
 
       records.push({
         timestamp: state.inWindow.timestamp,
-        model: state.inWindow.model,
+        model: state.model || 'codex',
         input: deltaNonCachedInput,
         output: deltaOutput,
         cacheRead: deltaCacheRead,

@@ -456,6 +456,13 @@
   margin-top: -2px;
 }
 
+/* 默认选项与预设模型之间的分隔线 */
+.radio-list-divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: 4px 10px;
+}
+
 /* 自定义输入 */
 .custom-input-area {
   margin-top: var(--space-3);

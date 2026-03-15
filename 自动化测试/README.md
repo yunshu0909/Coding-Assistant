@@ -44,3 +44,12 @@
     - `npm run test:v12:integration`
     - `npm run test:e2e:v12`
     - `npm run test:v12:all`
+
+- `V0.16`
+  - PRD：`/Users/wuhaoyang/Documents/trae_projects/skills/docs/prd/PRD-Skill-Manager-V0.16-模型配置与推理等级.md`
+  - 测试目录：`/Users/wuhaoyang/Documents/trae_projects/skills/skill-manager/自动化测试/V0.16`
+  - 执行命令：
+    - `npm run test:v16:backend`
+    - `npm run test:v16:integration`
+    - `npm run test:e2e:v16`
+    - `npm run test:v16:all`
