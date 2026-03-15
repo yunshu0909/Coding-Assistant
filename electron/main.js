@@ -30,6 +30,7 @@ const { registerImportPageHandlers } = require('./handlers/registerImportPageHan
 const { registerProviderHandlers } = require('./handlers/registerProviderHandlers')
 const { registerProjectInitHandlers } = require('./handlers/registerProjectInitHandlers')
 const { registerPermissionModeHandlers } = require('./handlers/permissionModeHandlers')
+const { registerModelConfigHandlers } = require('./handlers/modelConfigHandlers')
 const { registerMcpHandlers } = require('./handlers/registerMcpHandlers')
 const { registerRepoWatcherHandlers } = require('./handlers/registerRepoWatcherHandlers')
 const { registerClaudeCodeHandlers } = require('./handlers/registerClaudeCodeHandlers')
@@ -660,6 +661,14 @@ registerPermissionModeHandlers({
   ipcMain,
   pathExists,
   expandHome,
+})
+
+/**
+ * 注册 V0.16 模型配置与推理等级 IPC handlers
+ */
+registerModelConfigHandlers({
+  ipcMain,
+  pathExists,
 })
 
 /**

@@ -381,4 +381,9 @@ module.exports = {
   setPermissionMode,
   VALID_PERMISSION_MODES,
   MODE_DISPLAY_NAMES,
+  // 共享工具函数，供其他 settings 处理模块复用
+  backupClaudeSettingsRaw,
+  atomicWriteText,
+  CLAUDE_SETTINGS_FILE_PATH,
+  CLAUDE_SETTINGS_BACKUP_DIR,
 }

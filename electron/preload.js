@@ -352,6 +352,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   setPermissionMode: (mode) => ipcRenderer.invoke('set-permission-mode', mode),
 
+  // V0.16 模型配置与推理等级 APIs
+
+  /**
+   * 获取模型配置（model + effortLevel）
+   * @returns {Promise<{success: boolean, model?: string|null, effortLevel?: string|null, isModelConfigured?: boolean, isEffortConfigured?: boolean, error?: string, errorCode?: string}>}
+   */
+  getModelConfig: () => ipcRenderer.invoke('get-model-config'),
+
+  /**
+   * 设置模型配置（model 或 effortLevel）
+   * @param {string} field - 字段名（model 或 effortLevel）
+   * @param {string} value - 字段值
+   * @returns {Promise<{success: boolean, backupPath?: string|null, error?: string, errorCode?: string}>}
+   */
+  setModelConfig: (field, value) => ipcRenderer.invoke('set-model-config', field, value),
+
   // V0.14 双向自动同步 APIs
 
   /**
