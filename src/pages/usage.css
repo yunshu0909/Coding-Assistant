@@ -145,7 +145,7 @@
 }
 
 /* ============================================================
-   Metrics Column (2x2 Grid)
+   Metrics Column (3行×2列：总Token+预估费用 / 输入+输出 / 缓存读取+缓存写入)
    ============================================================ */
 
 .metrics-column {
@@ -617,4 +617,21 @@
   font-size: var(--text-xs);
   color: var(--text-tertiary);
   margin-top: var(--space-2);
+}
+
+/* ============================================================
+   Cost Estimation
+   ============================================================ */
+
+/* 未知模型费用占位符 */
+.cost--unknown {
+  color: var(--text-placeholder);
+}
+
+/* 费用标注说明 */
+.cost-disclaimer {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-align: center;
+  margin-top: var(--space-4);
 }

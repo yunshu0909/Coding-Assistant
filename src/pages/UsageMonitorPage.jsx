@@ -11,9 +11,10 @@
  * @module pages/UsageMonitorPage
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { aggregateUsage } from '../store/usageAggregator';
-import { PieChart, Legend, DetailTable } from './usage/components/UsageDisplayComponents';
+import { MetricsCards, PieChart, Legend, DetailTable } from './usage/components/UsageDisplayComponents';
+import { calculateCosts, formatCost } from '../store/costCalculator';
 import DatePickerModal from './usage/components/DatePickerModal';
 import {
   getBeijingDateTimeParts,
@@ -37,7 +38,8 @@ const EMPTY_USAGE_DATA = {
   total: 0,
   input: 0,
   output: 0,
-  cache: 0,
+  cacheRead: 0,
+  cacheCreate: 0,
   models: [],
   distribution: [],
   isExtremeScenario: false,
@@ -498,17 +500,15 @@ export default function UsageMonitorPage() {
     ? (customData || EMPTY_USAGE_DATA)
     : (periodCache[currentPeriod]?.data || EMPTY_USAGE_DATA);
 
+  // 基于当前展示数据计算各模型预估费用
+  const costData = useMemo(() => calculateCosts(displayData.models), [displayData.models]);
+
   // 格式化数字显示（带单位）
   const formatMetricValue = (num) => {
-    if (num >= 1000000000) {
-      return (num / 1000000000).toFixed(1) + 'B';
-    }
-    if (num >= 1000000) {
-      return (num / 1000000).toFixed(1) + 'M';
-    }
-    if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'K';
-    }
+    if (num == null) return '0';
+    if (num >= 1000000000) return (num / 1000000000).toFixed(1) + 'B';
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
     return num.toString();
   };
 
@@ -585,25 +585,13 @@ export default function UsageMonitorPage() {
 
       {/* 图表行：左侧指标卡(2x2) + 右侧饼图 */}
       <div className="chart-row">
-        {/* 左侧：2x2 指标卡 */}
-        <div className="metrics-column">
-          <div className="metric-card">
-            <div className="metric-label">总 Token</div>
-            <div className="metric-value">{formatMetricValue(displayData.total)}</div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">输入</div>
-            <div className="metric-value">{formatMetricValue(displayData.input)}</div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">输出</div>
-            <div className="metric-value">{formatMetricValue(displayData.output)}</div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">缓存命中</div>
-            <div className="metric-value">{formatMetricValue(displayData.cache)}</div>
-          </div>
-        </div>
+        {/* 左侧：指标卡（总Token+预估费用 / 输入+输出 / 缓存读取+缓存写入） */}
+        <MetricsCards
+          displayData={displayData}
+          formatMetricValue={formatMetricValue}
+          totalCost={costData.totalCost}
+          formatCost={formatCost}
+        />
 
         {/* 右侧：饼图 */}
         <div className="chart-container">
@@ -628,9 +616,18 @@ export default function UsageMonitorPage() {
           </div>
         </div>
         <div className="card-body" style={{ padding: 0 }}>
-          <DetailTable models={displayData.models} />
+          <DetailTable
+            models={displayData.models}
+            modelCosts={costData.modelCosts}
+            formatCost={formatCost}
+          />
         </div>
       </div>
+
+      {/* 费用标注 */}
+      <p className="cost-disclaimer">
+        费用为基于官方公开定价的估算值，实际费用以账单为准。订阅制用户（如 Claude Max）的实际支出为固定月费，此处仅供参考等价消耗。
+      </p>
     </PageShell>
   );
 }

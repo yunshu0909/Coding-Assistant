@@ -425,7 +425,8 @@ function generateViewData(aggregated) {
   const total = models.reduce((sum, m) => sum + m.total, 0);
   const totalInput = models.reduce((sum, m) => sum + m.input, 0);
   const totalOutput = models.reduce((sum, m) => sum + m.output, 0);
-  const totalCache = models.reduce((sum, m) => sum + m.cacheRead + m.cacheCreate, 0);
+  const totalCacheRead = models.reduce((sum, m) => sum + m.cacheRead, 0);
+  const totalCacheCreate = models.reduce((sum, m) => sum + m.cacheCreate, 0);
 
   // 使用最大余数法计算百分比，确保总和为 100%
   const modelsWithPercent = calculatePercentagesWithLargestRemainder(models, total);
@@ -477,7 +478,8 @@ function generateViewData(aggregated) {
     total,
     input: totalInput,
     output: totalOutput,
-    cache: totalCache,
+    cacheRead: totalCacheRead,
+    cacheCreate: totalCacheCreate,
     models,
     distribution,
     isExtremeScenario,
@@ -599,12 +601,9 @@ export async function aggregateUsage(period) {
  * @returns {string} 格式化后的字符串
  */
 export function formatNumber(num) {
-  if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M';
-  }
-  if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'K';
-  }
+  if (num == null) return '0';
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
   return num.toString();
 }
 

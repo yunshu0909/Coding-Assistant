@@ -1,0 +1,54 @@
+{
+  "exchangeRate": 7.22,
+  "models": {
+    "claude-opus-4-6": {
+      "displayName": "Claude Opus 4.6",
+      "input": 5.00,
+      "output": 25.00,
+      "cacheRead": 0.50,
+      "cacheWrite": 6.25
+    },
+    "claude-sonnet-4-6": {
+      "displayName": "Claude Sonnet 4.6",
+      "input": 3.00,
+      "output": 15.00,
+      "cacheRead": 0.30,
+      "cacheWrite": 3.75
+    },
+    "claude-haiku-4-5": {
+      "displayName": "Claude Haiku 4.5",
+      "input": 1.00,
+      "output": 5.00,
+      "cacheRead": 0.10,
+      "cacheWrite": 1.25
+    },
+    "gpt-5-3-codex": {
+      "displayName": "GPT-5.3 Codex",
+      "input": 1.75,
+      "output": 14.00,
+      "cacheRead": 0.175,
+      "cacheWrite": 0
+    },
+    "gpt-5-4": {
+      "displayName": "GPT-5.4",
+      "input": 2.50,
+      "output": 15.00,
+      "cacheRead": 0.25,
+      "cacheWrite": 0
+    },
+    "kimi-k2-5": {
+      "displayName": "Kimi K2.5",
+      "input": 0.60,
+      "output": 3.00,
+      "cacheRead": 0.15,
+      "cacheWrite": 0
+    },
+    "kimi-for-coding": {
+      "displayName": "Kimi for Coding",
+      "input": 0.60,
+      "output": 3.00,
+      "cacheRead": 0.15,
+      "cacheWrite": 0
+    }
+  }
+}
