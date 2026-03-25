@@ -1,6 +1,6 @@
 {
   "name": "skill-manager",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "管理和推送你的 Skills 到各个工具",
   "main": "electron/main.js",
   "scripts": {
@@ -11,7 +11,9 @@
     "mcp:provider-registry:smoke": "node mcp/provider_registry_mcp_smoke.js",
     "mcp:install-provider-registry:mvp": "node scripts/mcp/install_provider_registry_mvp.js",
     "build": "vite build",
-    "dist": "npm run build && electron-builder --mac --arm64",
+    "dist": "npm run dist:mac",
+    "dist:mac": "npm run build && electron-builder --mac --arm64",
+    "dist:win": "npm run build && electron-builder --win nsis --x64",
     "preview": "vite preview",
     "test": "npm run test:v04 && npm run test:v05",
     "test:v04": "vitest run --config 自动化测试/V0.4/vitest.config.js",
@@ -75,12 +77,20 @@
       },
       "category": "public.app-category.developer-tools"
     },
+    "win": {
+      "target": {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    },
     "files": [
       "dist/**/*",
       "electron/**/*",
       "templates/**/*",
       "mcp/**/*",
       "!**/*.map",
+      "!**/.provider-manifests.json",
+      "!**/.provider-manifests.json.bak.*",
       "!.provider-manifests.json",
       "!.provider-manifests.json.bak.*"
     ],

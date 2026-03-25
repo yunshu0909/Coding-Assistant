@@ -1,4 +1,4 @@
-name: Build & Release (macOS arm64)
+name: Build & Release
 
 on:
   push:
@@ -9,7 +9,27 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact_name: macos-arm64
+            build_command: npm run dist:mac
+            asset_paths: |
+              release/*.dmg
+              release/*.dmg.blockmap
+              release/latest-mac.yml
+          - os: windows-latest
+            artifact_name: windows-x64
+            build_command: npm run dist:win
+            asset_paths: |
+              release/*.exe
+              release/*.blockmap
+              release/latest*.yml
+
+    runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -20,16 +40,37 @@ jobs:
       - run: npm ci
 
       - name: Remove dangling symlinks
+        shell: bash
         run: |
           rm -f .provider-manifests.json
           rm -f .provider-manifests.json.bak.*
 
-      - run: npm run dist
+      - name: Build app package
+        run: ${{ matrix.build_command }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - uses: softprops/action-gh-release@v2
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
         with:
-          files: release/*.dmg
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.asset_paths }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
           generate_release_notes: true
