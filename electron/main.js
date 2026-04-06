@@ -34,6 +34,8 @@ const { registerModelConfigHandlers } = require('./handlers/modelConfigHandlers'
 const { registerMcpHandlers } = require('./handlers/registerMcpHandlers')
 const { registerNetworkDiagnosticsHandlers } = require('./handlers/registerNetworkDiagnosticsHandlers')
 const { registerSessionBrowserHandlers } = require('./handlers/registerSessionBrowserHandlers')
+const { registerDocBrowserHandlers } = require('./handlers/registerDocBrowserHandlers')
+const { initDocBrowserStore } = require('./services/docBrowserService')
 const { startIpMonitor } = require('./services/networkDiagnosticsService')
 const { registerRepoWatcherHandlers } = require('./handlers/registerRepoWatcherHandlers')
 const { resolveProviderRegistryFilePath } = require('./services/providerRegistryPathService')
@@ -43,6 +45,9 @@ const PROVIDER_REGISTRY_FILE_PATH = resolveProviderRegistryFilePath()
 const PROVIDER_REGISTRY_MCP_SCRIPT_PATH = path.resolve(__dirname, '..', 'mcp', 'provider_registry_mcp.js')
 
 const store = new Store()
+
+// 初始化文档查阅服务的 store 引用
+initDocBrowserStore(store)
 
 // 防止 EPIPE 错误导致崩溃（开发环境管道断开时）
 process.stdout.on('error', (err) => {
@@ -689,4 +694,9 @@ registerNetworkDiagnosticsHandlers({
 
 registerSessionBrowserHandlers({
   ipcMain,
+})
+
+registerDocBrowserHandlers({
+  ipcMain,
+  getMainWindow: () => mainWindow,
 })

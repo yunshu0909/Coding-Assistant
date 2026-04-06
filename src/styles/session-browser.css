@@ -15,9 +15,7 @@
 
 /* ── 左栏 ─────────────────────────────────────────── */
 .sb-sidebar {
-  width: 280px;
-  min-width: 280px;
-  border-right: 1px solid var(--border-default, #e2e5ea);
+  border-right: none;
   overflow-y: auto;
   background: var(--bg-subtle, #f8f9fb);
   display: flex;

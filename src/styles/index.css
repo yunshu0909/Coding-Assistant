@@ -59,6 +59,22 @@ body {
   display: flex;
 }
 
+/* ===== 通用拖拽分隔线 ===== */
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  transition: background 0.15s ease;
+}
+
+.resize-handle:hover,
+.resize-handle:active {
+  background: var(--color-primary, #2563eb);
+}
+
 /* ===== Import Page ===== */
 .import-body {
   padding: var(--space-6) var(--space-8) var(--space-8);

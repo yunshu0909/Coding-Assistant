@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import PageShell from '../components/PageShell'
 import StateView from '../components/StateView/StateView'
 import MarkdownRenderer from '../components/MarkdownRenderer/MarkdownRenderer'
+import useResizableSidebar from '../hooks/useResizableSidebar'
 import '../styles/session-browser.css'
 
 const SEARCH_DEBOUNCE_MS = 300
@@ -219,6 +220,8 @@ export default function SessionBrowserPage() {
 
   // 是否处于搜索模式
   const isSearchMode = searchQuery.trim().length > 0
+  // 可拖拽侧边栏
+  const { sidebarWidth, resizerProps } = useResizableSidebar(280, 200, 500)
 
   // 加载项目列表
   useEffect(() => {
@@ -347,7 +350,7 @@ export default function SessionBrowserPage() {
     >
       <div className="sb-layout">
         {/* 左栏 */}
-        <div className="sb-sidebar">
+        <div className="sb-sidebar" style={{ width: sidebarWidth, minWidth: sidebarWidth }}>
           {/* 搜索框 */}
           <div className="sb-search">
             <span className="sb-search-icon">🔍</span>
@@ -460,6 +463,9 @@ export default function SessionBrowserPage() {
             </StateView>
           )}
         </div>
+
+        {/* 拖拽分隔线 */}
+        <div {...resizerProps} />
 
         {/* 右栏：对话内容 */}
         <div className="sb-content">

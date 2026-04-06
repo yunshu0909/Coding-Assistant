@@ -509,4 +509,46 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<{success: boolean, data: Array, error: string|null}>}
    */
   searchSessions: (keyword) => ipcRenderer.invoke('session:search', keyword),
+
+  // 文档查阅 APIs
+
+  /**
+   * 打开文件夹选择对话框
+   * @returns {Promise<{success: boolean, data: string|null, error: string|null}>}
+   */
+  docSelectFolder: () => ipcRenderer.invoke('doc:selectFolder'),
+
+  /**
+   * 添加文件夹（校验 + 扫描 + 持久化）
+   * @param {string} folderPath
+   * @returns {Promise<{success: boolean, data?: object, error?: string, errorCode?: string}>}
+   */
+  docAddFolder: (folderPath) => ipcRenderer.invoke('doc:addFolder', folderPath),
+
+  /**
+   * 移除文件夹
+   * @param {string} folderPath
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  docRemoveFolder: (folderPath) => ipcRenderer.invoke('doc:removeFolder', folderPath),
+
+  /**
+   * 获取已保存的文件夹列表（含路径校验）
+   * @returns {Promise<{success: boolean, data: Array, error: string|null}>}
+   */
+  docListFolders: () => ipcRenderer.invoke('doc:listFolders'),
+
+  /**
+   * 列出文件夹下的所有 .md 文件
+   * @param {string} folderPath
+   * @returns {Promise<{success: boolean, data: Array, error: string|null}>}
+   */
+  docListFiles: (folderPath) => ipcRenderer.invoke('doc:listFiles', folderPath),
+
+  /**
+   * 读取 .md 文件内容
+   * @param {string} filePath
+   * @returns {Promise<{success: boolean, data: {content: string, size: number}, error: string|null}>}
+   */
+  docReadFile: (filePath) => ipcRenderer.invoke('doc:readFile', filePath),
 })
