@@ -156,6 +156,7 @@ export default function DocBrowserPage() {
   const [toast, setToast] = useState(null)
   // 竞态防护
   const loadFileSeqRef = useRef(0)
+  const loadFolderSeqRef = useRef(0)
 
   const isSearchMode = searchQuery.trim().length > 0
   // 可拖拽侧边栏
@@ -216,8 +217,16 @@ export default function DocBrowserPage() {
     e.stopPropagation()
     const folderName = folders.find(f => f.path === folderPath)?.name || ''
 
-    await window.electronAPI.docRemoveFolder(folderPath)
-    showToast(`文件夹「${folderName}」已移除`, 'success')
+    try {
+      const result = await window.electronAPI.docRemoveFolder(folderPath)
+      if (!result.success) {
+        showToast(result.error || '删除文件夹失败', 'error')
+        return
+      }
+    } catch (err) {
+      showToast(`删除失败: ${err.message}`, 'error')
+      return
+    }
 
     // 清理状态
     if (expandedFolder === folderPath) {
@@ -235,6 +244,7 @@ export default function DocBrowserPage() {
       return next
     })
     await loadFolders()
+    showToast(`文件夹「${folderName}」已移除`, 'success')
   }, [folders, expandedFolder, selectedFile, showToast])
 
   // 展开/折叠文件夹
@@ -249,17 +259,23 @@ export default function DocBrowserPage() {
 
     setExpandedFolder(folder.path)
     setFilesLoading(true)
+    const seq = ++loadFolderSeqRef.current
 
     try {
       const result = await window.electronAPI.docListFiles(folder.path)
+      // 防止旧请求覆盖新结果
+      if (seq !== loadFolderSeqRef.current) return
       if (result.success) {
         setFiles(result.data)
         setAllFilesCache(prev => ({ ...prev, [folder.path]: result.data }))
       }
     } catch (err) {
+      if (seq !== loadFolderSeqRef.current) return
       console.error('Failed to list files:', err)
     } finally {
-      setFilesLoading(false)
+      if (seq === loadFolderSeqRef.current) {
+        setFilesLoading(false)
+      }
     }
   }, [expandedFolder])
 
@@ -405,7 +421,7 @@ export default function DocBrowserPage() {
                       <span className="db-file-icon">📄</span>
                       <div className="db-search-item-info">
                         <div className="db-file-name">{file.name}</div>
-                        <div className="db-search-item-path">{file.folderName} / {file.dir || ''}</div>
+                        <div className="db-search-item-path">{file.dir ? `${file.folderName} / ${file.dir}` : file.folderName}</div>
                       </div>
                     </button>
                   ))}
@@ -463,6 +479,7 @@ export default function DocBrowserPage() {
                         ) : (
                           <FileTreeNode
                             node={fileTree}
+                            depth={0}
                             selectedFile={selectedFile}
                             onFileClick={handleFileClick}
                           />

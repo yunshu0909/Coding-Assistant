@@ -45,7 +45,7 @@ function registerDocBrowserHandlers({ ipcMain, getMainWindow }) {
     try {
       return await addFolder(folderPath)
     } catch (error) {
-      return { success: false, error: error.message }
+      return { success: false, data: null, error: error.message, errorCode: error.errorCode }
     }
   })
 

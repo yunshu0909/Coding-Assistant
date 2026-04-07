@@ -14,6 +14,8 @@ const fs = require('fs/promises')
 const path = require('path')
 
 const STORE_KEY = 'docBrowser.folders'
+const MAX_SCAN_FILES = 5000
+const MAX_SCAN_DEPTH = 15
 
 /** @type {import('electron-store').default | null} */
 let store = null
@@ -30,10 +32,14 @@ function initDocBrowserStore(storeInstance) {
  * 递归扫描目录下的所有 .md 文件
  * @param {string} baseDir - 根目录
  * @param {string} [relativeTo=''] - 相对路径前缀（递归用）
+ * @param {number} [depth=0] - 当前递归深度
  * @returns {Promise<Array<{name: string, relativePath: string, dir: string, fullPath: string, size: number}>>}
  */
-async function scanMdFiles(baseDir, relativeTo = '') {
+async function scanMdFiles(baseDir, relativeTo = '', depth = 0) {
   const results = []
+
+  // 超过深度限制，停止递归
+  if (depth > MAX_SCAN_DEPTH) return results
 
   let entries
   try {
@@ -43,13 +49,19 @@ async function scanMdFiles(baseDir, relativeTo = '') {
   }
 
   for (const entry of entries) {
+    // 达到文件数量上限，停止扫描
+    if (results.length >= MAX_SCAN_FILES) break
+
     const fullPath = path.join(baseDir, entry.name)
     const relPath = relativeTo ? path.join(relativeTo, entry.name) : entry.name
+
+    // 跳过符号链接，防止越界到系统目录或循环链接
+    if (entry.isSymbolicLink()) continue
 
     if (entry.isDirectory()) {
       // 跳过隐藏目录和 node_modules
       if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
-      const subFiles = await scanMdFiles(fullPath, relPath)
+      const subFiles = await scanMdFiles(fullPath, relPath, depth + 1)
       results.push(...subFiles)
     } else if (entry.isFile() && entry.name.endsWith('.md')) {
       try {
@@ -149,7 +161,7 @@ function removeFolder(folderPath) {
   const folders = store.get(STORE_KEY, [])
   const updated = folders.filter(f => f !== folderPath)
   store.set(STORE_KEY, updated)
-  return { success: true }
+  return { success: true, data: null, error: null }
 }
 
 /**
@@ -163,12 +175,36 @@ async function listFiles(folderPath) {
 
 /**
  * 读取 .md 文件内容
+ * 安全校验：文件必须在已注册文件夹内，且为 .md 后缀
  * @param {string} filePath - 文件绝对路径
  * @returns {Promise<{content: string, size: number}>}
  */
 async function readFile(filePath) {
-  const content = await fs.readFile(filePath, 'utf-8')
-  const stat = await fs.stat(filePath)
+  // 路径安全校验：必须在已注册的文件夹内
+  const folders = store.get(STORE_KEY, [])
+  const realPath = await fs.realpath(filePath)
+  let isAllowed = false
+  for (const folderPath of folders) {
+    try {
+      const realFolder = await fs.realpath(folderPath)
+      if (realPath.startsWith(realFolder + path.sep)) {
+        isAllowed = true
+        break
+      }
+    } catch {
+      // 文件夹路径不可访问，跳过
+    }
+  }
+  if (!isAllowed) {
+    throw new Error('文件不在已注册的文件夹内')
+  }
+  // 仅允许读取 .md 文件
+  if (!realPath.endsWith('.md')) {
+    throw new Error('仅支持读取 .md 文件')
+  }
+
+  const content = await fs.readFile(realPath, 'utf-8')
+  const stat = await fs.stat(realPath)
   return { content, size: stat.size }
 }
 
