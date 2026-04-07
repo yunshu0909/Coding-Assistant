@@ -7,6 +7,7 @@
  * - 导入完成后初始化推送目标
  * - 管理活跃模块状态（技能管理/用量看板/API配置等）
  * - 工作台下定时执行自动增量刷新（每 5 分钟）
+ * - 同步主进程的新版提醒状态
  *
  * @module App
  */
@@ -28,6 +29,16 @@ import { dataStore } from './store/data'
 const AUTO_INCREMENTAL_REFRESH_INTERVAL_MS = 5 * 60 * 1000
 const DEFAULT_ACTIVE_MODULE = 'usage'
 const VALID_ACTIVE_MODULES = new Set(['skills', 'mcp', 'usage', 'api', 'project-init', 'permission', 'network', 'sessions', 'doc-browser'])
+const INITIAL_APP_UPDATE_STATE = Object.freeze({
+  checked: false,
+  checking: false,
+  hasUpdate: false,
+  currentVersion: '',
+  latestVersion: '',
+  releaseUrl: '',
+  error: null,
+  checkedAt: null,
+})
 
 /**
  * 读取上次访问的模块，并过滤已下线模块
@@ -49,6 +60,8 @@ export default function App() {
   const [hasVisitedMcp, setHasVisitedMcp] = useState(false)
   // 技能模块刷新信号（自动增量导入新增 skill 后触发）
   const [skillsRefreshSignal, setSkillsRefreshSignal] = useState(0)
+  // 应用更新状态：由主进程统一检查并推送，渲染层只负责展示
+  const [appUpdateState, setAppUpdateState] = useState(INITIAL_APP_UPDATE_STATE)
 
   // 启动时检查中央仓库状态，决定初始页面
   useEffect(() => {
@@ -177,14 +190,54 @@ export default function App() {
     }
   }, [activeModule])
 
+  useEffect(() => {
+    if (!window.electronAPI?.getAppUpdateState) return undefined
+
+    let isDisposed = false
+
+    const applyNextState = (nextState) => {
+      if (isDisposed || !nextState) return
+      setAppUpdateState((prev) => ({ ...prev, ...nextState }))
+    }
+
+    const loadInitialAppUpdateState = async () => {
+      try {
+        const nextState = await window.electronAPI.getAppUpdateState()
+        applyNextState(nextState)
+      } catch (error) {
+        console.error('Error loading app update state:', error)
+      }
+    }
+
+    loadInitialAppUpdateState()
+
+    const unsubscribe = window.electronAPI.onAppUpdateState?.((nextState) => {
+      applyNextState(nextState)
+    }) || (() => {})
+
+    return () => {
+      isDisposed = true
+      unsubscribe()
+    }
+  }, [])
+
+  /**
+   * 打开新版下载页
+   */
+  const handleUpdateClick = () => {
+    window.electronAPI?.openAppUpdatePage?.().catch((error) => {
+      console.error('Error opening update page:', error)
+    })
+  }
+
   // 始终渲染 WorkbenchLayout；加载中时内容区显示 loading
   return (
     <div className="app">
       <WorkbenchLayout
         activeModule={activeModule}
         onModuleChange={handleModuleChange}
-        hasUpdate={false}
-        onUpdateClick={() => { /* TODO: 接入 GitHub 版本检查后实现 */ }}
+        hasUpdate={appUpdateState.hasUpdate}
+        onUpdateClick={handleUpdateClick}
       >
         {activeModule === 'skills' && (
           initialSkillManagerPage === null

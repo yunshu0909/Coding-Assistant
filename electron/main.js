@@ -9,7 +9,7 @@
  * @module electron/main
  */
 
-const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
 const path = require('path')
 const fs = require('fs/promises')
 const { randomUUID } = require('crypto')
@@ -27,6 +27,7 @@ const { handleAggregateUsageRange } = require('./aggregateUsageRangeHandler')
 const { scanSkillDirectory, parseSkillMd } = require('./services/skillScanService')
 const { registerSkillHandlers } = require('./handlers/registerSkillHandlers')
 const { registerImportPageHandlers } = require('./handlers/registerImportPageHandlers')
+const { registerAppUpdateHandlers } = require('./handlers/registerAppUpdateHandlers')
 const { registerProviderHandlers } = require('./handlers/registerProviderHandlers')
 const { registerProjectInitHandlers } = require('./handlers/registerProjectInitHandlers')
 const { registerPermissionModeHandlers } = require('./handlers/permissionModeHandlers')
@@ -136,7 +137,19 @@ app.whenReady().then(async () => {
     console.warn('[builtin-mcp] ensure unexpected failure:', error?.message || error)
   }
 
+  const appUpdateHandlers = registerAppUpdateHandlers({
+    ipcMain,
+    app,
+    shell,
+    getMainWindow: () => mainWindow,
+  })
+
   createWindow()
+
+  // 启动即检查一次新版本，先做提醒式更新，不在应用内直接下载安装。
+  appUpdateHandlers.checkForUpdates().catch((error) => {
+    console.warn('[app-update] startup check failed:', error?.message || error)
+  })
 
   // 启动 IP 后台监控（应用启动即运行，30 秒采样）
   startIpMonitor(() => mainWindow)

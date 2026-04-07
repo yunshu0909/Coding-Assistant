@@ -413,6 +413,37 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   restartRepoWatcher: (newRepoPath) => ipcRenderer.invoke('restart-repo-watcher', newRepoPath),
 
+  // V1.2.9 应用更新提醒 APIs
+
+  /**
+   * 获取当前应用更新状态
+   * @returns {Promise<{checked: boolean, checking: boolean, hasUpdate: boolean, currentVersion: string, latestVersion: string, releaseUrl: string, error: string|null, checkedAt: string|null}>}
+   */
+  getAppUpdateState: () => ipcRenderer.invoke('app-update:get-state'),
+
+  /**
+   * 手动检查是否存在新版
+   * @returns {Promise<{checked: boolean, checking: boolean, hasUpdate: boolean, currentVersion: string, latestVersion: string, releaseUrl: string, error: string|null, checkedAt: string|null}>}
+   */
+  checkAppUpdate: () => ipcRenderer.invoke('app-update:check'),
+
+  /**
+   * 打开新版下载页
+   * @returns {Promise<{success: boolean, url: string}>}
+   */
+  openAppUpdatePage: () => ipcRenderer.invoke('app-update:open-release-page'),
+
+  /**
+   * 监听主进程推送的应用更新状态
+   * @param {(state: Object) => void} callback - 状态更新回调
+   * @returns {() => void}
+   */
+  onAppUpdateState: (callback) => {
+    const handler = (_event, state) => callback(state)
+    ipcRenderer.on('app-update:state', handler)
+    return () => ipcRenderer.removeListener('app-update:state', handler)
+  },
+
   // V0.11 MCP 管理 APIs
 
   /**
