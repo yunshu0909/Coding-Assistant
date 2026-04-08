@@ -18,15 +18,52 @@ const { createReadStream } = require('fs')
 const CLAUDE_PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects')
 
 /**
- * 从编码后的项目目录名中提取可读的项目名
- * Claude Code 编码规则：路径 / 替换为 -
- * 取最后一段作为项目名（对绝大多数项目正确）
+ * 从编码后的项目目录名中提取可读的项目名（fallback 方案）
+ * Claude Code 编码规则：路径中的 / 和非 ASCII 字符都替换为 -
+ * 取最后一个非空段作为项目名
  * @param {string} encoded - 编码后的目录名
  * @returns {string} 项目名
  */
 function decodeProjectName(encoded) {
-  const parts = encoded.replace(/^-/, '').split('-')
+  const parts = encoded.replace(/^-/, '').split('-').filter(Boolean)
   return parts[parts.length - 1] || encoded
+}
+
+/**
+ * 从项目目录的 JSONL 文件中提取真实项目路径名
+ * 读取首个 session 文件的前几行，寻找 cwd 字段
+ * 解决中文/特殊字符目录名被编码为 dash 后无法还原的问题
+ * @param {string} projectDir - 项目目录的完整路径
+ * @returns {Promise<string|null>} 项目名或 null
+ */
+async function resolveProjectName(projectDir) {
+  try {
+    const files = await fs.readdir(projectDir)
+    const jsonlFile = files.find(f => f.endsWith('.jsonl'))
+    if (!jsonlFile) return null
+
+    const filePath = path.join(projectDir, jsonlFile)
+    const fileStream = createReadStream(filePath, { encoding: 'utf-8' })
+    const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity })
+
+    try {
+      let lineCount = 0
+      for await (const line of rl) {
+        if (lineCount++ > 10) break
+        try {
+          const obj = JSON.parse(line)
+          if (obj.cwd) return path.basename(obj.cwd)
+        } catch {
+          // JSON 解析失败，继续下一行
+        }
+      }
+    } finally {
+      fileStream.destroy()
+    }
+  } catch {
+    // 读取失败，返回 null 走 fallback
+  }
+  return null
 }
 
 /**
@@ -46,7 +83,7 @@ async function listProjects() {
         const projectDir = path.join(CLAUDE_PROJECTS_DIR, entry.name)
         const files = await fs.readdir(projectDir)
         const jsonlFiles = files.filter(f => f.endsWith('.jsonl'))
-        const name = decodeProjectName(entry.name)
+        const name = await resolveProjectName(projectDir) || decodeProjectName(entry.name)
 
         projects.push({
           id: entry.name,
@@ -258,7 +295,6 @@ async function searchSessions(keyword, maxResults = 50) {
     if (results.length >= maxResults) break
 
     const projectDir = path.join(CLAUDE_PROJECTS_DIR, entry.name)
-    const projectName = decodeProjectName(entry.name)
 
     let files
     try {
@@ -268,6 +304,7 @@ async function searchSessions(keyword, maxResults = 50) {
     }
 
     const jsonlFiles = files.filter(f => f.endsWith('.jsonl'))
+    const projectName = await resolveProjectName(projectDir) || decodeProjectName(entry.name)
 
     for (const filename of jsonlFiles) {
       if (results.length >= maxResults) break
