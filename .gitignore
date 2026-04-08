@@ -13,7 +13,7 @@ node_modules/
 # 构建输出
 dist/
 build/
-release/
+/release/
 release-*/
 
 # 测试相关
