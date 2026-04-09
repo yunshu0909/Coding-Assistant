@@ -9,7 +9,7 @@
  * @module electron/handlers/registerSessionBrowserHandlers
  */
 
-const { listProjects, listSessions, readSession, searchSessions } = require('../services/sessionBrowserService')
+const { listProjects, listSessions, readSession, searchSessions, deleteSession } = require('../services/sessionBrowserService')
 
 /**
  * 注册 Session 浏览 IPC handlers
@@ -62,6 +62,18 @@ function registerSessionBrowserHandlers({ ipcMain }) {
       return { success: true, data: results, error: null }
     } catch (error) {
       return { success: false, data: null, error: error.message }
+    }
+  })
+
+  /**
+   * 删除指定 session
+   */
+  ipcMain.handle('session:delete', async (_event, projectId, sessionId) => {
+    try {
+      await deleteSession(projectId, sessionId)
+      return { success: true, error: null }
+    } catch (error) {
+      return { success: false, error: error.message }
     }
   })
 }

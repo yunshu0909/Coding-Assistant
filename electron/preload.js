@@ -541,6 +541,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   searchSessions: (keyword) => ipcRenderer.invoke('session:search', keyword),
 
+  /**
+   * 删除指定 session
+   * @param {string} projectId - 项目目录名
+   * @param {string} sessionId - session UUID
+   * @returns {Promise<{success: boolean, error: string|null}>}
+   */
+  deleteSession: (projectId, sessionId) => ipcRenderer.invoke('session:delete', projectId, sessionId),
+
   // 文档查阅 APIs
 
   /**

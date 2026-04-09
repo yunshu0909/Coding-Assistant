@@ -210,6 +210,40 @@
   color: var(--text-tertiary, #8b919a);
 }
 
+/* Session 项容器：包裹 session 按钮 + 删除按钮 */
+.sb-session-item-wrapper {
+  position: relative;
+}
+
+.sb-session-item-wrapper:hover .sb-session-delete {
+  opacity: 1;
+}
+
+/* Session 删除按钮：hover 时才显示 */
+.sb-session-delete {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary, #8b919a);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: var(--radius-sm, 6px);
+  opacity: 0;
+  transition: opacity 150ms ease, color 150ms ease, background 150ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sb-session-delete:hover {
+  color: var(--color-danger, #dc2626);
+  background: rgba(220, 38, 38, 0.08);
+}
+
 /* Session 项 */
 .sb-session-item {
   display: block;

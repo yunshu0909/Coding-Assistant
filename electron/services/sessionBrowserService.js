@@ -370,4 +370,32 @@ async function searchSessions(keyword, maxResults = 50) {
   return results
 }
 
-module.exports = { listProjects, listSessions, readSession, searchSessions }
+/**
+ * 删除指定 session 的 JSONL 文件及同名目录（如缓存数据）
+ * @param {string} projectId - 编码后的项目目录名
+ * @param {string} sessionId - session UUID
+ * @returns {Promise<void>}
+ */
+async function deleteSession(projectId, sessionId) {
+  // 防止路径穿越：projectId 和 sessionId 都只允许安全字符
+  if (!/^[a-zA-Z0-9_-]+$/.test(projectId) || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
+    throw new Error('Invalid projectId or sessionId')
+  }
+
+  const projectDir = path.join(CLAUDE_PROJECTS_DIR, projectId)
+  const jsonlPath = path.join(projectDir, `${sessionId}.jsonl`)
+
+  // 确保文件存在
+  await fs.access(jsonlPath)
+  await fs.rm(jsonlPath)
+
+  // 同名目录可能存放缓存数据，一并清理
+  const sessionDir = path.join(projectDir, sessionId)
+  try {
+    await fs.rm(sessionDir, { recursive: true })
+  } catch {
+    // 目录不存在属正常情况
+  }
+}
+
+module.exports = { listProjects, listSessions, readSession, searchSessions, deleteSession }

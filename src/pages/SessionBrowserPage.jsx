@@ -12,6 +12,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import PageShell from '../components/PageShell'
 import StateView from '../components/StateView/StateView'
+import Modal from '../components/Modal/Modal'
+import Button from '../components/Button/Button'
+import Toast from '../components/Toast'
 import MarkdownRenderer from '../components/MarkdownRenderer/MarkdownRenderer'
 import useResizableSidebar from '../hooks/useResizableSidebar'
 import '../styles/session-browser.css'
@@ -217,6 +220,11 @@ export default function SessionBrowserPage() {
   const debounceRef = useRef(null)
   // 防竞态：loadSession 的请求序号，只有最新请求的结果才写入 state
   const loadSessionSeqRef = useRef(0)
+  // 删除确认弹窗
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  // Toast 提示
+  const [toast, setToast] = useState(null)
 
   // 是否处于搜索模式
   const isSearchMode = searchQuery.trim().length > 0
@@ -341,6 +349,32 @@ export default function SessionBrowserPage() {
     loadSession(result.projectId, result.sessionId)
   }, [loadSession])
 
+  // 删除 session
+  const handleDeleteSession = useCallback(async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const result = await window.electronAPI.deleteSession(deleteTarget.projectId, deleteTarget.sessionId)
+      if (result.success) {
+        setSessions(prev => prev.filter(s => s.id !== deleteTarget.sessionId))
+        setProjects(prev => prev.map(p =>
+          p.id === deleteTarget.projectId ? { ...p, sessionCount: p.sessionCount - 1 } : p
+        ))
+        if (selectedSessionId === deleteTarget.sessionId) {
+          setSelectedSessionId(null)
+          setMessages([])
+        }
+      } else {
+        setToast({ message: '删除失败：' + (result.error || '未知错误'), type: 'error' })
+      }
+    } catch (err) {
+      setToast({ message: '删除失败：' + err.message, type: 'error' })
+    } finally {
+      setDeleting(false)
+      setDeleteTarget(null)
+    }
+  }, [deleteTarget, selectedSessionId])
+
   return (
     <PageShell
       title="对话回顾"
@@ -442,17 +476,28 @@ export default function SessionBrowserPage() {
                           <div className="sb-session-loading">加载中...</div>
                         ) : (
                           sessions.map(session => (
-                            <button
-                              key={session.id}
-                              className={`sb-session-item ${selectedSessionId === session.id ? 'active' : ''}`}
-                              onClick={() => handleSessionClick(session.id)}
-                            >
-                              <div className="sb-session-prompt">{session.firstPrompt}</div>
-                              <div className="sb-session-meta">
-                                <span>{formatTime(session.modifiedAt)}</span>
-                                <span>{session.lineCount} 行</span>
-                              </div>
-                            </button>
+                            <div key={session.id} className="sb-session-item-wrapper">
+                              <button
+                                className={`sb-session-item ${selectedSessionId === session.id ? 'active' : ''}`}
+                                onClick={() => handleSessionClick(session.id)}
+                              >
+                                <div className="sb-session-prompt">{session.firstPrompt}</div>
+                                <div className="sb-session-meta">
+                                  <span>{formatTime(session.modifiedAt)}</span>
+                                  <span>{session.lineCount} 行</span>
+                                </div>
+                              </button>
+                              <button
+                                className="sb-session-delete"
+                                title="删除此对话"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setDeleteTarget({ projectId: selectedProjectId, sessionId: session.id, prompt: session.firstPrompt })
+                                }}
+                              >
+                                ✕
+                              </button>
+                            </div>
                           ))
                         )}
                       </div>
@@ -510,6 +555,27 @@ export default function SessionBrowserPage() {
           )}
         </div>
       </div>
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+      {/* 删除确认弹窗 */}
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="删除对话"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteTarget(null)}>取消</Button>
+            <Button variant="danger" loading={deleting} onClick={handleDeleteSession}>删除</Button>
+          </>
+        }
+      >
+        <p>确定要删除这条对话吗？此操作不可恢复。</p>
+        {deleteTarget?.prompt && (
+          <p style={{ color: 'var(--color-text-secondary)', fontSize: 13, marginTop: 8 }}>
+            {deleteTarget.prompt}
+          </p>
+        )}
+      </Modal>
     </PageShell>
   )
 }
