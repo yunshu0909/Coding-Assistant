@@ -374,6 +374,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   setModelConfig: (field, value) => ipcRenderer.invoke('set-model-config', field, value),
 
+  // Claude Code 会员额度状态 APIs
+
+  /**
+   * 获取 Claude Code 会员额度状态接入情况与最新快照
+   * @returns {Promise<{success: boolean, claudeInstalled?: boolean, integrationState?: string, message?: string, config?: object, snapshot?: object|null, error?: string, errorCode?: string}>}
+   */
+  getClaudeUsageStatusState: () => ipcRenderer.invoke('claude-usage-status:get-state'),
+
+  /**
+   * 自动安装或修复 Claude Code 会员额度状态能力
+   * @param {{force?: boolean}} [options] - 安装选项
+   * @returns {Promise<object>}
+   */
+  ensureClaudeUsageStatusInstalled: (options) => ipcRenderer.invoke('claude-usage-status:ensure-installed', options),
+
+  /**
+   * 保存 Claude Code 会员额度状态显示配置
+   * @param {{displayMode?: string, fiveHourThreshold?: number, sevenDayThreshold?: number}} config - 显示配置
+   * @returns {Promise<object>}
+   */
+  saveClaudeUsageStatusConfig: (config) => ipcRenderer.invoke('claude-usage-status:save-config', config),
+
   // V0.14 双向自动同步 APIs
 
   /**

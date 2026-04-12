@@ -5,7 +5,7 @@
  * - 始终渲染 WorkbenchLayout（含侧边栏）
  * - 根据中央仓库状态决定 SkillManager 初始子页面（import/manage）
  * - 导入完成后初始化推送目标
- * - 管理活跃模块状态（技能管理/用量看板/API配置等）
+ * - 管理活跃模块状态（技能管理/用量看板/Claude 专属页/API配置等）
  * - 工作台下定时执行自动增量刷新（每 5 分钟）
  * - 同步主进程的新版提醒状态
  *
@@ -17,6 +17,7 @@ import WorkbenchLayout from './components/WorkbenchLayout'
 import SkillManagerModule from './components/SkillManagerModule'
 import UsageMonitorModule from './components/UsageMonitorModule'
 import ApiConfigPage from './pages/ApiConfigPage'
+import ClaudeUsageStatusPage from './pages/ClaudeUsageStatusPage'
 import ProjectInitPage from './pages/ProjectInitPage'
 import PermissionModePage from './pages/PermissionModePage'
 import McpPage from './pages/McpPage'
@@ -28,7 +29,7 @@ import { dataStore } from './store/data'
 
 const AUTO_INCREMENTAL_REFRESH_INTERVAL_MS = 5 * 60 * 1000
 const DEFAULT_ACTIVE_MODULE = 'usage'
-const VALID_ACTIVE_MODULES = new Set(['skills', 'mcp', 'usage', 'api', 'project-init', 'permission', 'network', 'sessions', 'doc-browser'])
+const VALID_ACTIVE_MODULES = new Set(['skills', 'mcp', 'usage', 'claude-usage', 'api', 'project-init', 'permission', 'network', 'sessions', 'doc-browser'])
 const INITIAL_APP_UPDATE_STATE = Object.freeze({
   checked: false,
   checking: false,
@@ -42,7 +43,7 @@ const INITIAL_APP_UPDATE_STATE = Object.freeze({
 
 /**
  * 读取上次访问的模块，并过滤已下线模块
- * @returns {'skills'|'mcp'|'usage'|'api'|'project-init'|'permission'}
+ * @returns {'skills'|'mcp'|'usage'|'claude-usage'|'api'|'project-init'|'permission'|'network'|'sessions'|'doc-browser'}
  */
 function getInitialActiveModule() {
   const storedModule = localStorage.getItem('codepal-active-module')
@@ -221,6 +222,35 @@ export default function App() {
     }
   }, [])
 
+  // 启动时静默尝试接入 Claude Code 会员额度状态，不打断用户主流程
+  useEffect(() => {
+    let isDisposed = false
+
+    const bootstrapClaudeUsageStatus = async () => {
+      if (!window.electronAPI?.ensureClaudeUsageStatusInstalled) return
+
+      try {
+        const result = await window.electronAPI.ensureClaudeUsageStatusInstalled({ force: false })
+        if (isDisposed) return
+
+        // 检测失败只记日志，不弹窗，避免启动噪音过大
+        if (!result?.success && result?.error) {
+          console.warn('[claude-usage-status] bootstrap skipped:', result.error)
+        }
+      } catch (error) {
+        if (!isDisposed) {
+          console.warn('[claude-usage-status] bootstrap failed:', error?.message || error)
+        }
+      }
+    }
+
+    bootstrapClaudeUsageStatus()
+
+    return () => {
+      isDisposed = true
+    }
+  }, [])
+
   /**
    * 打开新版下载页
    */
@@ -254,6 +284,7 @@ export default function App() {
           </div>
         )}
         {activeModule === 'usage' && <UsageMonitorModule />}
+        {activeModule === 'claude-usage' && <ClaudeUsageStatusPage />}
         {activeModule === 'api' && <ApiConfigPage />}
         {activeModule === 'project-init' && <ProjectInitPage />}
         {activeModule === 'permission' && <PermissionModePage />}

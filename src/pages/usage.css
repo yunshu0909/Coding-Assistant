@@ -86,6 +86,12 @@
   position: relative;
 }
 
+/* ============================================================
+   Claude Usage Status Card
+   ↑ v1.3.4 迁移至 `usage/components/ClaudeUsageStatusCard.css`
+     由 ClaudeUsageStatusCard.jsx 直接 import,不再放在 usage.css 里
+   ============================================================ */
+
 .segment-control {
   display: inline-flex;
   background: var(--bg-muted);

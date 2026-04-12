@@ -3,7 +3,7 @@
  *
  * 负责：
  * - macOS 风格的标题栏（红绿灯窗口控制按钮）
- * - 左侧导航侧边栏（技能管理、用量监测）
+ * - 左侧导航侧边栏（技能管理、用量监测、Claude 专属页等）
  * - 模块切换状态管理
  * - 内容区域渲染
  * - 底部版本更新提醒（Pill 胶囊按钮）
@@ -20,7 +20,7 @@ import brandLogo from '../assets/codepal-logo.png'
  * 工作台布局组件
  * @param {Object} props
  * @param {React.ReactNode} props.children - 内容区域要渲染的子元素
- * @param {'skills'|'mcp'|'usage'|'api'|'project-init'|'permission'} props.activeModule - 当前激活的模块
+ * @param {'skills'|'mcp'|'usage'|'claude-usage'|'api'|'project-init'|'permission'|'network'|'sessions'|'doc-browser'} props.activeModule - 当前激活的模块
  * @param {function} props.onModuleChange - 模块切换回调函数
  * @param {boolean} props.hasUpdate - 是否有新版本可用
  * @param {function} props.onUpdateClick - 点击更新按钮的回调
@@ -45,7 +45,8 @@ function WorkbenchLayout({ children, activeModule, onModuleChange, hasUpdate, on
     {
       label: '用量看板',
       items: [
-        { id: 'usage', label: '用量监测', icon: '📊' }
+        { id: 'usage', label: '用量监测', icon: '📊' },
+        { id: 'claude-usage', label: 'Claude 会员额度', icon: '🪄' }
       ]
     },
     {

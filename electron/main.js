@@ -32,6 +32,7 @@ const { registerProviderHandlers } = require('./handlers/registerProviderHandler
 const { registerProjectInitHandlers } = require('./handlers/registerProjectInitHandlers')
 const { registerPermissionModeHandlers } = require('./handlers/permissionModeHandlers')
 const { registerModelConfigHandlers } = require('./handlers/modelConfigHandlers')
+const { registerClaudeUsageStatusHandlers } = require('./handlers/registerClaudeUsageStatusHandlers')
 const { registerMcpHandlers } = require('./handlers/registerMcpHandlers')
 const { registerNetworkDiagnosticsHandlers } = require('./handlers/registerNetworkDiagnosticsHandlers')
 const { registerSessionBrowserHandlers } = require('./handlers/registerSessionBrowserHandlers')
@@ -690,6 +691,14 @@ registerPermissionModeHandlers({
  * 注册 V0.16 模型配置与推理等级 IPC handlers
  */
 registerModelConfigHandlers({
+  ipcMain,
+  pathExists,
+})
+
+/**
+ * 注册 Claude Code 会员额度状态相关 IPC handlers
+ */
+registerClaudeUsageStatusHandlers({
   ipcMain,
   pathExists,
 })
