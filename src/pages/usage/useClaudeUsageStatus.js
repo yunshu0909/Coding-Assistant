@@ -34,6 +34,8 @@ export default function useClaudeUsageStatus() {
   const [error, setError] = useState(null)
   // 表单配置：用户在卡片里编辑的显示模式与阈值
   const [formConfig, setFormConfig] = useState(DEFAULT_FORM_CONFIG)
+  // v1.4.1: 7d 周期满载率历史数据
+  const [history, setHistory] = useState({ currentCycle: null, completedCycles: [] })
 
   /**
    * 拉取当前状态
@@ -80,9 +82,33 @@ export default function useClaudeUsageStatus() {
     }
   }, [])
 
+  /**
+   * v1.4.1: 拉取 7d 周期满载率历史
+   * 失败静默处理，不阻塞主流程（趋势是次要信息）
+   * @returns {Promise<void>}
+   */
+  const loadHistory = useCallback(async () => {
+    if (!window.electronAPI?.getClaudeUsageHistory) {
+      setHistory({ currentCycle: null, completedCycles: [] })
+      return
+    }
+    try {
+      const result = await window.electronAPI.getClaudeUsageHistory()
+      if (result?.success) {
+        setHistory({
+          currentCycle: result.currentCycle || null,
+          completedCycles: Array.isArray(result.completedCycles) ? result.completedCycles : [],
+        })
+      }
+    } catch {
+      // 历史读取失败静默处理，保持空结构即可
+    }
+  }, [])
+
   useEffect(() => {
     loadStatus()
-  }, [loadStatus])
+    loadHistory()
+  }, [loadStatus, loadHistory])
 
   /**
    * 重试安装/修复
@@ -126,21 +152,22 @@ export default function useClaudeUsageStatus() {
 
   /**
    * 保存显示配置
-   * @returns {Promise<void>}
-   */
-  /**
-   * 保存显示配置
+   *
+   * @param {object} [override] - 可选：指定要保存的配置（v1.4.1 弹窗传入临时 draft）
+   *   不传则使用 hook 内部 formConfig（兼容旧调用方式）
    * @returns {Promise<boolean>} 保存是否成功,供调用方触发 Toast
    */
-  const saveConfig = useCallback(async () => {
+  const saveConfig = useCallback(async (override) => {
     if (!window.electronAPI?.saveClaudeUsageStatusConfig) return false
+
+    const source = override ?? formConfig
 
     setSaving(true)
     try {
       const result = await window.electronAPI.saveClaudeUsageStatusConfig({
-        displayMode: formConfig.displayMode,
-        fiveHourThreshold: Number(formConfig.fiveHourThreshold),
-        sevenDayThreshold: Number(formConfig.sevenDayThreshold),
+        displayMode: source.displayMode,
+        fiveHourThreshold: Number(source.fiveHourThreshold),
+        sevenDayThreshold: Number(source.sevenDayThreshold),
       })
 
       if (!result?.success) {
@@ -173,7 +200,9 @@ export default function useClaudeUsageStatus() {
     saving,
     error,
     formConfig,
+    history,
     loadStatus,
+    loadHistory,
     ensureInstalled,
     updateFormConfig,
     saveConfig,

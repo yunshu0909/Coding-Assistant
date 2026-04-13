@@ -130,6 +130,14 @@ async function setModelConfig(field, value, pathExists) {
       errorCode: 'INVALID_VALUE',
     }
   }
+  // model 允许显式传入空字符串表示“跟随账户默认”，但不接受纯空白字符。
+  if (field === 'model' && value !== '' && value.trim() === '') {
+    return {
+      success: false,
+      error: '参数错误：model 不能是纯空白字符',
+      errorCode: 'INVALID_VALUE',
+    }
+  }
   if (field !== 'model' && value.trim() === '') {
     return {
       success: false,

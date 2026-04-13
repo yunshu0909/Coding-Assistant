@@ -50,6 +50,13 @@ function registerClaudeUsageStatusHandlers({ ipcMain, pathExists }) {
   ipcMain.handle('claude-usage-status:save-config', async (event, config = {}) => {
     return claudeUsageStatusService.saveUsageStatusConfig(config)
   })
+
+  /**
+   * IPC: 获取 7d 周期满载率历史（v1.4.1 新增，供满载率趋势卡渲染）
+   */
+  ipcMain.handle('claude-usage-status:get-history', async () => {
+    return claudeUsageStatusService.getUsageHistory()
+  })
 }
 
 module.exports = {

@@ -1,0 +1,297 @@
+/**
+ * Claude 会员额度满载率趋势卡样式 (v1.4.1)
+ *
+ * 负责：
+ * - 趋势卡外壳（复用 .claude-status-card 的视觉语言，使用相同圆角/边框/阴影）
+ * - 满载率大数字（品牌蓝系）
+ * - 本周进行中（蓝底浅色容器 + 呼吸灯）
+ * - 已完成周期水平条（蓝色 + opacity 分层）
+ *
+ * 颜色规则（与 ClaudeUsageStatusCard 的告警色彩完全不同）：
+ *   满载率高 = 用得值 = 好事 → 统一 --color-primary (#2563eb)
+ *   用 opacity 表达层级：
+ *     - 满载率大数字：1.0
+ *     - 本周进行中条：0.6
+ *     - 已完成周期条：0.45
+ *
+ * @module pages/usage/components/ClaudeUsageTrendCard.css
+ */
+
+/* ============================================================
+   趋势卡外壳（与会员额度卡视觉统一）
+   ============================================================ */
+
+.trend-card {
+  background: var(--bg-base);
+  border: 1.5px solid var(--border-default);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  margin-bottom: var(--space-4);
+}
+
+.trend-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.trend-card__title-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.trend-card__title {
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.trend-card__subtitle {
+  margin-top: 3px;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}
+
+/* 满载率大数字徽标 */
+.trend-card__value {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.trend-card__value-num {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--color-primary);
+  line-height: 1;
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-card__value-unit {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-primary);
+  opacity: 0.6;
+}
+
+/* 无数据时的占位样式 */
+.trend-card__value--placeholder .trend-card__value-num {
+  color: var(--text-placeholder);
+}
+
+/* 卡片主体 */
+.trend-card__body {
+  padding: var(--space-5);
+}
+
+/* 底部 footer */
+.trend-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-5);
+  background: var(--bg-subtle);
+  border-top: 1px solid var(--border-light);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+/* ============================================================
+   本周进行中区域
+   ============================================================ */
+
+.trend-current-week {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-primary-light);
+  border: 1px solid #dbeafe;
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-4);
+}
+
+.trend-current-week__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.trend-current-week__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.trend-current-week__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  display: inline-block;
+  animation: trend-cw-pulse 2s ease-in-out infinite;
+}
+
+@keyframes trend-cw-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.trend-current-week__pct {
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.trend-current-week__track {
+  height: 6px;
+  background: #dbeafe;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.trend-current-week__fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  opacity: 0.6;
+  transition: width 400ms cubic-bezier(.4, 0, .2, 1);
+}
+
+.trend-current-week__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--text-2xs);
+  color: var(--color-primary);
+  opacity: 0.75;
+  line-height: 1.5;
+}
+
+.trend-current-week__tag {
+  display: inline-block;
+  padding: 1px 6px;
+  background: rgba(37, 99, 235, 0.1);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  color: var(--color-primary);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   已完成周期区域
+   ============================================================ */
+
+.trend-card__section-label {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trend-card__section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-light);
+}
+
+.trend-card__history-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.trend-history-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.trend-history-row:last-child {
+  border-bottom: none;
+}
+
+.trend-history-row__date {
+  flex-shrink: 0;
+  width: 105px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-history-row__bar {
+  flex: 1;
+  height: 8px;
+  background: var(--bg-muted);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.trend-history-row__fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  opacity: 0.45;
+  transition: width 400ms cubic-bezier(.4, 0, .2, 1);
+}
+
+.trend-history-row__pct {
+  flex-shrink: 0;
+  width: 42px;
+  text-align: right;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary);
+}
+
+/* ============================================================
+   无历史数据时的引导文案
+   ============================================================ */
+
+.trend-card__empty-hint {
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: 1.7;
+  text-align: center;
+}
+
+/* ============================================================
+   快照过期态：与会员额度卡同步半透明
+   ============================================================ */
+
+.trend-card--stale .trend-current-week__fill,
+.trend-card--stale .trend-history-row__fill {
+  opacity: 0.3;
+}
+
+.trend-card--stale .trend-card__value-num,
+.trend-card--stale .trend-card__value-unit {
+  opacity: 0.55;
+}

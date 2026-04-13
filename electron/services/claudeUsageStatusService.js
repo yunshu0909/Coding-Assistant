@@ -24,12 +24,18 @@ const CLAUDE_SETTINGS_PATH = path.join(CLAUDE_DIR, 'settings.json')
 const STATUS_SCRIPT_PATH = path.join(CLAUDE_DIR, 'codepal-usage-statusline.sh')
 const STATUS_CONFIG_PATH = path.join(CLAUDE_DIR, 'codepal-usage-status-config.json')
 const STATUS_SNAPSHOT_PATH = path.join(CLAUDE_DIR, 'codepal-usage-status-snapshot.json')
+// v1.4.1: 满载率趋势历史文件 — statusLine 脚本每次运行时更新，追踪 7d 周期峰值
+const STATUS_HISTORY_PATH = path.join(CLAUDE_DIR, 'codepal-usage-history.json')
 const MANAGED_STATUS_COMMAND = `bash "${STATUS_SCRIPT_PATH}"`
 const LEGACY_MANAGED_STATUS_COMMAND = `bash ${STATUS_SCRIPT_PATH}`
 
 // 脚本版本号：每次修改 buildStatusScriptContent() 时递增，
 // 页面加载时自动检测版本不匹配就重写磁盘脚本。
-const SCRIPT_VERSION = 3
+// v4: 新增 7d 周期历史追踪（update_history 逻辑）
+const SCRIPT_VERSION = 4
+
+// v1.4.1: 满载率趋势最多保留的已完成周期数（约 3 个月）
+const MAX_COMPLETED_CYCLES = 13
 
 const VALID_DISPLAY_MODES = ['always', 'threshold', 'off']
 const DEFAULT_STATUS_CONFIG = Object.freeze({
@@ -87,15 +93,18 @@ function buildStatusScriptContent() {
 # CodePal-managed Claude Code usage status line.
 # Reads Claude Code's JSON stdin, writes a local snapshot, and prints
 # a single status line based on the user's display mode.
+# v4: also tracks 7d cycle peak history for 满载率趋势 feature.
 
 input=$(cat)
-CODEPAL_STATUS_PAYLOAD="$input" python3 - "${STATUS_CONFIG_PATH}" "${STATUS_SNAPSHOT_PATH}" <<'PY'
+CODEPAL_STATUS_PAYLOAD="$input" python3 - "${STATUS_CONFIG_PATH}" "${STATUS_SNAPSHOT_PATH}" "${STATUS_HISTORY_PATH}" <<'PY'
 import json
 import os
 import sys
 import tempfile
 import time
 from datetime import datetime
+
+MAX_COMPLETED_CYCLES = ${MAX_COMPLETED_CYCLES}
 
 RESET = "\\033[0m"
 DIM = "\\033[2m"
@@ -112,6 +121,7 @@ DEFAULT_CONFIG = {
 
 config_path = sys.argv[1]
 snapshot_path = sys.argv[2]
+history_path = sys.argv[3] if len(sys.argv) > 3 else None
 payload_raw = os.environ.get("CODEPAL_STATUS_PAYLOAD", "")
 
 try:
@@ -196,6 +206,104 @@ def write_snapshot(snapshot):
         except OSError:
             pass
 
+def load_history():
+    """读取历史文件；损坏或不存在都返回干净的空结构，不抛异常影响状态栏主流程"""
+    default = {"version": 1, "currentCycle": None, "completedCycles": []}
+    if not history_path or not os.path.exists(history_path):
+        return default
+    try:
+        with open(history_path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except Exception:
+        return default
+    if not isinstance(data, dict):
+        return default
+    current_cycle = data.get("currentCycle") if isinstance(data.get("currentCycle"), dict) else None
+    completed = data.get("completedCycles") if isinstance(data.get("completedCycles"), list) else []
+    # 过滤非法条目
+    completed = [c for c in completed if isinstance(c, dict)]
+    return {
+        "version": 1,
+        "currentCycle": current_cycle,
+        "completedCycles": completed,
+    }
+
+def write_history(history):
+    if not history_path:
+        return
+    directory = os.path.dirname(history_path)
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix="codepal-usage-history-", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(history, handle, ensure_ascii=False, indent=2)
+            handle.write("\\n")
+        os.replace(tmp_path, history_path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+def update_history(week_pct_value, week_resets_at_value):
+    """
+    更新 7d 周期历史。
+    - 无数据时（week_pct/week_resets_at 为 None）：跳过，不写文件
+    - sevenDayResetsAt 与上次相同 → 同一周期，更新峰值（取较大者）
+    - sevenDayResetsAt 发生变化 → 新周期开始，封存上周期到 completedCycles 头部
+    - completedCycles 超过 MAX_COMPLETED_CYCLES 时裁剪最旧
+    """
+    if week_pct_value is None or week_resets_at_value is None:
+        return
+    try:
+        current_resets_at = int(week_resets_at_value)
+        current_pct = float(week_pct_value)
+    except Exception:
+        return
+
+    history = load_history()
+    prev = history.get("currentCycle")
+    period_start = current_resets_at - 7 * 86400
+
+    if prev is None:
+        # 从未记录过：初始化 currentCycle
+        history["currentCycle"] = {
+            "periodStart": period_start,
+            "sevenDayResetsAt": current_resets_at,
+            "peakPercentage": current_pct,
+        }
+    elif prev.get("sevenDayResetsAt") == current_resets_at:
+        # 同一周期：更新峰值
+        existing_peak = prev.get("peakPercentage")
+        try:
+            existing_peak_num = float(existing_peak) if existing_peak is not None else 0.0
+        except Exception:
+            existing_peak_num = 0.0
+        history["currentCycle"] = {
+            "periodStart": prev.get("periodStart", period_start),
+            "sevenDayResetsAt": current_resets_at,
+            "peakPercentage": max(existing_peak_num, current_pct),
+        }
+    else:
+        # 新周期：封存上一周期到历史，重置当前周期
+        sealed = {
+            "periodStart": prev.get("periodStart", current_resets_at - 14 * 86400),
+            "periodEnd": prev.get("sevenDayResetsAt", current_resets_at),
+            "peakPercentage": prev.get("peakPercentage", 0),
+        }
+        completed = history.get("completedCycles", [])
+        completed.insert(0, sealed)
+        if len(completed) > MAX_COMPLETED_CYCLES:
+            completed = completed[:MAX_COMPLETED_CYCLES]
+        history["completedCycles"] = completed
+        history["currentCycle"] = {
+            "periodStart": period_start,
+            "sevenDayResetsAt": current_resets_at,
+            "peakPercentage": current_pct,
+        }
+
+    write_history(history)
+
 config = load_config()
 model = get_value(payload, "model", "display_name", default="Claude Code")
 five_pct = get_value(payload, "rate_limits", "five_hour", "used_percentage")
@@ -222,6 +330,9 @@ snapshot = {
     "updatedAt": int(time.time()),
 }
 write_snapshot(snapshot)
+
+# v4: 写入 7d 周期历史（与 displayMode 无关，off 模式也要记）
+update_history(week_pct, week_resets_at)
 
 if not should_render(config, five_pct, week_pct):
     raise SystemExit(0)
@@ -570,6 +681,56 @@ function createClaudeUsageStatusService({ pathExists, claudeSettingsService }) {
   }
 
   /**
+   * 读取 7d 周期满载率历史（供前端满载率趋势卡渲染）
+   *
+   * 返回结构：
+   *   {
+   *     success: true,
+   *     exists: boolean,              // 历史文件是否存在
+   *     currentCycle: object|null,    // 当前进行中周期
+   *     completedCycles: Array,       // 已完成周期，最新在前
+   *   }
+   *
+   * 文件损坏 / 解析失败时按"空数据"处理，返回 success=true 但 exists=false，
+   * 避免阻塞前端渲染（趋势是次要信息，不能因为历史文件坏了把主页面卡住）
+   *
+   * @returns {Promise<object>}
+   */
+  async function getUsageHistory() {
+    const exists = await pathExists(STATUS_HISTORY_PATH)
+    if (!exists) {
+      return {
+        success: true,
+        exists: false,
+        currentCycle: null,
+        completedCycles: [],
+      }
+    }
+
+    const raw = await readJsonFile(STATUS_HISTORY_PATH, null)
+    if (!isPlainObject(raw)) {
+      return {
+        success: true,
+        exists: true,
+        currentCycle: null,
+        completedCycles: [],
+      }
+    }
+
+    const currentCycle = isPlainObject(raw.currentCycle) ? raw.currentCycle : null
+    const completedCycles = Array.isArray(raw.completedCycles)
+      ? raw.completedCycles.filter((item) => isPlainObject(item))
+      : []
+
+    return {
+      success: true,
+      exists: true,
+      currentCycle,
+      completedCycles,
+    }
+  }
+
+  /**
    * 保存会员额度状态配置
    * @param {object} configInput - 用户配置
    * @returns {Promise<object>}
@@ -594,12 +755,14 @@ function createClaudeUsageStatusService({ pathExists, claudeSettingsService }) {
     scriptPath: STATUS_SCRIPT_PATH,
     configPath: STATUS_CONFIG_PATH,
     snapshotPath: STATUS_SNAPSHOT_PATH,
+    historyPath: STATUS_HISTORY_PATH,
     managedCommand: MANAGED_STATUS_COMMAND,
     defaultConfig: DEFAULT_STATUS_CONFIG,
     validDisplayModes: VALID_DISPLAY_MODES,
     getUsageStatusState,
     ensureUsageStatusInstalled,
     saveUsageStatusConfig,
+    getUsageHistory,
   }
 }
 
@@ -609,11 +772,13 @@ module.exports = {
   STATUS_SCRIPT_PATH,
   STATUS_CONFIG_PATH,
   STATUS_SNAPSHOT_PATH,
+  STATUS_HISTORY_PATH,
   MANAGED_STATUS_COMMAND,
   LEGACY_MANAGED_STATUS_COMMAND,
   DEFAULT_STATUS_CONFIG,
   VALID_DISPLAY_MODES,
   SCRIPT_VERSION,
+  MAX_COMPLETED_CYCLES,
   normalizeStatusConfig,
   createClaudeUsageStatusService,
 }

@@ -4,9 +4,12 @@
  * 负责：
  * - 展示 Claude Code 会员额度接入状态与 5h/7d 水平进度条
  * - 按固定颜色断点(60/85)渲染进度条,与状态栏脚本严格对齐
- * - 提供显示模式 radio 单选组 + 阈值输入的配置表单
  * - 覆盖 9 种渲染态:主态/等待首个数据/账号无额度数据/配置冲突/未接入/
  *   未安装 Claude Code/接入失败/读取异常/off 模式
+ *
+ * v1.4.1 变更：
+ * - 移除了显示模式 radio 和阈值输入（已迁移至 ClaudeUsageSettingsModal 弹窗）
+ * - 组件 Props 不再需要 formConfig / onFormChange / onSave / saving
  *
  * @module pages/usage/components/ClaudeUsageStatusCard
  */
@@ -122,9 +125,11 @@ function deriveRenderState(statusState, error) {
 
   if (integration === 'ready') {
     if (config?.displayMode === 'off') return 'off_with_data'
-    // 快照过期判断：updatedAt 距今超过 15 分钟视为 stale
+    // 快照过期判断：updatedAt 距今超过 2 小时视为 stale
     // off 模式下不触发（off 已明确提示"数据照常同步"，不与 stale 叠加）
-    const STALE_MS = 15 * 60 * 1000
+    // v1.4.1: 阈值从 15 分钟放宽到 2 小时 — 没用 Claude Code 时数据本来就不会变,
+    //         15 分钟太敏感（吃饭/开会就触发），2 小时是更合理的"真的有点旧了"信号
+    const STALE_MS = 2 * 60 * 60 * 1000
     if (snapshot?.updatedAt && (Date.now() - Number(snapshot.updatedAt) * 1000) > STALE_MS) {
       return 'stale'
     }
@@ -260,41 +265,12 @@ function EmptyBody({
 }
 
 /**
- * 单个 radio 选项
- * @param {object} props - radio 选项属性
- * @returns {JSX.Element}
- */
-function RadioOption({ checked, onChange, label, desc, value, name }) {
-  return (
-    <label className={`claude-radio-option${checked ? ' claude-radio-option--checked' : ''}`}>
-      <input
-        type="radio"
-        name={name}
-        value={value}
-        checked={checked}
-        onChange={() => onChange(value)}
-        className="claude-radio-option__native"
-      />
-      <span className="claude-radio-option__dot" aria-hidden="true" />
-      <span className="claude-radio-option__content">
-        <div className="claude-radio-option__label">{label}</div>
-        <div className="claude-radio-option__desc">{desc}</div>
-      </span>
-    </label>
-  )
-}
-
-/**
  * Claude Code 会员额度状态卡片
  * @param {object} props - 组件属性
  * @param {object|null} props.statusState - 当前状态(后端 IPC 返回)
  * @param {boolean} props.loading - 是否加载中
  * @param {boolean} props.installing - 是否安装中
- * @param {boolean} props.saving - 是否保存中
  * @param {string|null} props.error - 错误信息
- * @param {{displayMode: string, fiveHourThreshold: string|number, sevenDayThreshold: string|number}} props.formConfig - 表单配置
- * @param {(field: string, value: string) => void} props.onFormChange - 表单更新回调
- * @param {() => void} props.onSave - 保存回调
  * @param {() => void} props.onRefresh - 刷新回调
  * @param {(options?: {force?: boolean}) => void} props.onEnsureInstalled - 安装/修复回调
  * @returns {JSX.Element}
@@ -303,19 +279,13 @@ export default function ClaudeUsageStatusCard({
   statusState,
   loading,
   installing,
-  saving,
   error,
-  formConfig,
-  onFormChange,
-  onSave,
   onRefresh,
   onEnsureInstalled,
 }) {
   const renderState = deriveRenderState(statusState, error)
   const badge = getBadge(renderState)
   const snapshot = statusState?.snapshot || null
-  const claudeInstalled = Boolean(statusState?.claudeInstalled)
-  const showSettings = claudeInstalled && renderState !== 'not_installed' && renderState !== 'read_error'
   const updatedAtLabel = formatUpdatedAt(snapshot?.updatedAt)
   const offHintVisible = renderState === 'off_with_data'
 
@@ -494,96 +464,6 @@ export default function ClaudeUsageStatusCard({
           </footer>
         )}
       </section>
-
-      {/* 显示设置卡 — 只在 Claude Code 已安装时显示 */}
-      {showSettings && (
-        <section className="claude-settings-card">
-          <header className="claude-settings-card__header">
-            <h2 className="claude-settings-card__title">显示设置</h2>
-            <p className="claude-settings-card__subtitle">
-              控制 Claude Code 底部状态栏的显示行为
-            </p>
-          </header>
-
-          <div className="claude-settings-card__body">
-            <div className="claude-settings-group">
-              <div className="claude-settings-group__label">显示模式</div>
-
-              <RadioOption
-                name="claude-display-mode"
-                value="always"
-                checked={formConfig.displayMode === 'always'}
-                onChange={(v) => onFormChange('displayMode', v)}
-                label="总是显示"
-                desc="Claude Code 底部状态栏常驻显示 5h 和 7d 额度"
-              />
-
-              <RadioOption
-                name="claude-display-mode"
-                value="threshold"
-                checked={formConfig.displayMode === 'threshold'}
-                onChange={(v) => onFormChange('displayMode', v)}
-                label="达阈值才显示"
-                desc="只有 5h 或 7d 任一超过下面的阈值时,才出现在状态栏"
-              />
-
-              <RadioOption
-                name="claude-display-mode"
-                value="off"
-                checked={formConfig.displayMode === 'off'}
-                onChange={(v) => onFormChange('displayMode', v)}
-                label="关闭"
-                desc="不在 Claude Code 底部显示,但 CodePal 这里仍实时更新数据"
-              />
-            </div>
-
-            <div className="claude-settings-group">
-              <div className="claude-settings-group__label">
-                阈值(仅在"达阈值才显示"模式下生效)
-              </div>
-              <div className="claude-threshold-row">
-                <div className="claude-threshold-field">
-                  <div className="claude-threshold-field__label">5 小时阈值</div>
-                  <div className="claude-threshold-field__control">
-                    <input
-                      className="claude-threshold-field__input"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={formConfig.fiveHourThreshold}
-                      onChange={(e) => onFormChange('fiveHourThreshold', e.target.value)}
-                    />
-                    <span className="claude-threshold-field__suffix">%</span>
-                  </div>
-                </div>
-                <div className="claude-threshold-field">
-                  <div className="claude-threshold-field__label">7 天阈值</div>
-                  <div className="claude-threshold-field__control">
-                    <input
-                      className="claude-threshold-field__input"
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={formConfig.sevenDayThreshold}
-                      onChange={(e) => onFormChange('sevenDayThreshold', e.target.value)}
-                    />
-                    <span className="claude-threshold-field__suffix">%</span>
-                  </div>
-                </div>
-              </div>
-              <div className="claude-threshold-help">
-                阈值只影响"是否出现在 Claude Code 状态栏",不影响本页进度条的颜色(颜色固定规则:&lt;60% 绿 · 60-85% 黄 · ≥85% 红)。
-              </div>
-            </div>
-          </div>
-
-          <footer className="claude-settings-card__footer">
-            <Button variant="primary" onClick={onSave} loading={saving}>
-              {saving ? '保存中...' : '保存设置'}
-            </Button>
-          </footer>
-        </section>
-      )}
     </>
   )
 }

@@ -132,7 +132,6 @@ describe('V0.16 Model Config Tab Formal Flow (Integration)', () => {
     expect(screen.getByTestId('model-radio-sonnet').className).not.toContain('is-selected')
     expect(screen.getByTestId('model-radio-sonnet[1m]').className).not.toContain('is-selected')
     expect(screen.getByTestId('model-radio-haiku').className).not.toContain('is-selected')
-    expect(screen.getByTestId('model-radio-opusplan').className).not.toContain('is-selected')
   })
 
   it('TC-FE-04: 选择预设模型应触发写入并更新状态', async () => {

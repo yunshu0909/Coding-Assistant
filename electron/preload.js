@@ -396,6 +396,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   saveClaudeUsageStatusConfig: (config) => ipcRenderer.invoke('claude-usage-status:save-config', config),
 
+  /**
+   * 获取 Claude Code 会员额度 7d 周期满载率历史（v1.4.1）
+   * @returns {Promise<{success: boolean, exists: boolean, currentCycle: object|null, completedCycles: Array}>}
+   */
+  getClaudeUsageHistory: () => ipcRenderer.invoke('claude-usage-status:get-history'),
+
   // V0.14 双向自动同步 APIs
 
   /**
