@@ -11,6 +11,7 @@
  */
 
 const fs = require('fs/promises')
+const { readFileSync } = require('fs')
 const path = require('path')
 const os = require('os')
 const { execFile } = require('child_process')
@@ -32,7 +33,8 @@ const LEGACY_MANAGED_STATUS_COMMAND = `bash ${STATUS_SCRIPT_PATH}`
 // 脚本版本号：每次修改 buildStatusScriptContent() 时递增，
 // 页面加载时自动检测版本不匹配就重写磁盘脚本。
 // v4: 新增 7d 周期历史追踪（update_history 逻辑）
-const SCRIPT_VERSION = 4
+// v5: 新增当前上下文占用指示（bar + 百分比，默认开启不加配置）
+const SCRIPT_VERSION = 5
 
 // v1.4.1: 满载率趋势最多保留的已完成周期数（约 3 个月）
 const MAX_COMPLETED_CYCLES = 13
@@ -83,293 +85,45 @@ function normalizeStatusConfig(source) {
   }
 }
 
+// v5: Python 模板抽离为独立文件。模块加载时一次性读入，避免每次构建脚本都做磁盘 IO。
+// 占位符采用 __SNAKE_CASE__ 形式，不会与 bash / Python 语法冲突。
+const SCRIPT_TEMPLATE_PATH = path.join(__dirname, 'claudeUsageStatusScript.tpl')
+const SCRIPT_TEMPLATE = readFileSync(SCRIPT_TEMPLATE_PATH, 'utf-8')
+
 /**
- * 构建状态栏脚本内容
+ * 转义路径，用于嵌入 bash 双引号字符串。
+ * 防御极罕见但合法的家目录路径字符：反斜杠 / 双引号 / $（bash 变量展开）/ 反引号（命令替换）。
+ * @param {string} value - 原始路径
+ * @returns {string} 转义后可安全放入 "..." 的字符串
+ */
+function escapeForBashDoubleQuote(value) {
+  return String(value).replace(/([\\$"`])/g, '\\$1')
+}
+
+/**
+ * 把任意值强制规范为正整数字符串；无效值回退到 fallback。
+ * 用于 Python 代码位置的占位符（`MAX_COMPLETED_CYCLES = __X__`），
+ * 确保任何意外非数字不会让 Python 源码语法直接崩掉。
+ * @param {unknown} value
+ * @param {number} fallback
  * @returns {string}
  */
+function toIntegerString(value, fallback) {
+  const n = Number.parseInt(value, 10)
+  return Number.isInteger(n) && n > 0 ? String(n) : String(fallback)
+}
+
+/**
+ * 构建状态栏脚本内容
+ * @returns {string} 完全渲染后的 bash+Python 脚本
+ */
 function buildStatusScriptContent() {
-  return `#!/usr/bin/env bash
-# codepal-script-version: ${SCRIPT_VERSION}
-# CodePal-managed Claude Code usage status line.
-# Reads Claude Code's JSON stdin, writes a local snapshot, and prints
-# a single status line based on the user's display mode.
-# v4: also tracks 7d cycle peak history for 满载率趋势 feature.
-
-input=$(cat)
-CODEPAL_STATUS_PAYLOAD="$input" python3 - "${STATUS_CONFIG_PATH}" "${STATUS_SNAPSHOT_PATH}" "${STATUS_HISTORY_PATH}" <<'PY'
-import json
-import os
-import sys
-import tempfile
-import time
-from datetime import datetime
-
-MAX_COMPLETED_CYCLES = ${MAX_COMPLETED_CYCLES}
-
-RESET = "\\033[0m"
-DIM = "\\033[2m"
-BOLD = "\\033[1m"
-GREEN = "\\033[32m"
-YELLOW = "\\033[33m"
-RED = "\\033[31m"
-
-DEFAULT_CONFIG = {
-    "displayMode": "always",
-    "fiveHourThreshold": 70,
-    "sevenDayThreshold": 70,
-}
-
-config_path = sys.argv[1]
-snapshot_path = sys.argv[2]
-history_path = sys.argv[3] if len(sys.argv) > 3 else None
-payload_raw = os.environ.get("CODEPAL_STATUS_PAYLOAD", "")
-
-try:
-    payload = json.loads(payload_raw) if payload_raw else {}
-except Exception:
-    payload = {}
-
-def is_plain_object(value):
-    return isinstance(value, dict)
-
-def normalize_threshold(value, fallback):
-    try:
-        parsed = round(float(value))
-    except Exception:
-        return fallback
-    return max(0, min(100, parsed))
-
-def load_config():
-    if not os.path.exists(config_path):
-        return dict(DEFAULT_CONFIG)
-    try:
-        with open(config_path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-    except Exception:
-        return dict(DEFAULT_CONFIG)
-    if not is_plain_object(data):
-        return dict(DEFAULT_CONFIG)
-    display_mode = data.get("displayMode")
-    if display_mode not in ("always", "threshold", "off"):
-        display_mode = DEFAULT_CONFIG["displayMode"]
-    return {
-        "displayMode": display_mode,
-        "fiveHourThreshold": normalize_threshold(data.get("fiveHourThreshold"), DEFAULT_CONFIG["fiveHourThreshold"]),
-        "sevenDayThreshold": normalize_threshold(data.get("sevenDayThreshold"), DEFAULT_CONFIG["sevenDayThreshold"]),
-    }
-
-def get_value(source, *keys, default=None):
-    current = source
-    for key in keys:
-        if not is_plain_object(current):
-            return default
-        current = current.get(key)
-        if current is None:
-            return default
-    return current
-
-def color_pct(value):
-    try:
-        pct = float(value)
-    except Exception:
-        return f"{DIM}--{RESET}"
-    color = GREEN if pct < 60 else YELLOW if pct < 85 else RED
-    return f"{color}{pct:.0f}%{RESET}"
-
-def should_render(config, five_pct, week_pct):
-    if config["displayMode"] == "off":
-        return False
-    if config["displayMode"] == "always":
-        return True
-    try:
-        five_match = five_pct is not None and float(five_pct) >= config["fiveHourThreshold"]
-    except Exception:
-        five_match = False
-    try:
-        week_match = week_pct is not None and float(week_pct) >= config["sevenDayThreshold"]
-    except Exception:
-        week_match = False
-    return five_match or week_match
-
-def write_snapshot(snapshot):
-    directory = os.path.dirname(snapshot_path)
-    os.makedirs(directory, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(prefix="codepal-usage-status-", suffix=".tmp", dir=directory)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(snapshot, handle, ensure_ascii=False, indent=2)
-            handle.write("\\n")
-        os.replace(tmp_path, snapshot_path)
-    except Exception:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-
-def load_history():
-    """读取历史文件；损坏或不存在都返回干净的空结构，不抛异常影响状态栏主流程"""
-    default = {"version": 1, "currentCycle": None, "completedCycles": []}
-    if not history_path or not os.path.exists(history_path):
-        return default
-    try:
-        with open(history_path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-    except Exception:
-        return default
-    if not isinstance(data, dict):
-        return default
-    current_cycle = data.get("currentCycle") if isinstance(data.get("currentCycle"), dict) else None
-    completed = data.get("completedCycles") if isinstance(data.get("completedCycles"), list) else []
-    # 过滤非法条目
-    completed = [c for c in completed if isinstance(c, dict)]
-    return {
-        "version": 1,
-        "currentCycle": current_cycle,
-        "completedCycles": completed,
-    }
-
-def write_history(history):
-    if not history_path:
-        return
-    directory = os.path.dirname(history_path)
-    os.makedirs(directory, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(prefix="codepal-usage-history-", suffix=".tmp", dir=directory)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(history, handle, ensure_ascii=False, indent=2)
-            handle.write("\\n")
-        os.replace(tmp_path, history_path)
-    except Exception:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-
-def update_history(week_pct_value, week_resets_at_value):
-    """
-    更新 7d 周期历史。
-    - 无数据时（week_pct/week_resets_at 为 None）：跳过，不写文件
-    - sevenDayResetsAt 与上次相同 → 同一周期，更新峰值（取较大者）
-    - sevenDayResetsAt 发生变化 → 新周期开始，封存上周期到 completedCycles 头部
-    - completedCycles 超过 MAX_COMPLETED_CYCLES 时裁剪最旧
-    """
-    if week_pct_value is None or week_resets_at_value is None:
-        return
-    try:
-        current_resets_at = int(week_resets_at_value)
-        current_pct = float(week_pct_value)
-    except Exception:
-        return
-
-    history = load_history()
-    prev = history.get("currentCycle")
-    period_start = current_resets_at - 7 * 86400
-
-    if prev is None:
-        # 从未记录过：初始化 currentCycle
-        history["currentCycle"] = {
-            "periodStart": period_start,
-            "sevenDayResetsAt": current_resets_at,
-            "peakPercentage": current_pct,
-        }
-    elif prev.get("sevenDayResetsAt") == current_resets_at:
-        # 同一周期：更新峰值
-        existing_peak = prev.get("peakPercentage")
-        try:
-            existing_peak_num = float(existing_peak) if existing_peak is not None else 0.0
-        except Exception:
-            existing_peak_num = 0.0
-        history["currentCycle"] = {
-            "periodStart": prev.get("periodStart", period_start),
-            "sevenDayResetsAt": current_resets_at,
-            "peakPercentage": max(existing_peak_num, current_pct),
-        }
-    else:
-        # 新周期：封存上一周期到历史，重置当前周期
-        sealed = {
-            "periodStart": prev.get("periodStart", current_resets_at - 14 * 86400),
-            "periodEnd": prev.get("sevenDayResetsAt", current_resets_at),
-            "peakPercentage": prev.get("peakPercentage", 0),
-        }
-        completed = history.get("completedCycles", [])
-        completed.insert(0, sealed)
-        if len(completed) > MAX_COMPLETED_CYCLES:
-            completed = completed[:MAX_COMPLETED_CYCLES]
-        history["completedCycles"] = completed
-        history["currentCycle"] = {
-            "periodStart": period_start,
-            "sevenDayResetsAt": current_resets_at,
-            "peakPercentage": current_pct,
-        }
-
-    write_history(history)
-
-config = load_config()
-model = get_value(payload, "model", "display_name", default="Claude Code")
-five_pct = get_value(payload, "rate_limits", "five_hour", "used_percentage")
-week_pct = get_value(payload, "rate_limits", "seven_day", "used_percentage")
-resets_at = get_value(payload, "rate_limits", "five_hour", "resets_at")
-week_resets_at = get_value(payload, "rate_limits", "seven_day", "resets_at")
-
-# 初次启动：payload 里没有 rate_limits 字段，说明还没产生过真实 API 响应，
-# 不写快照、不输出状态行，静默退出等待首次对话。
-if "rate_limits" not in payload and five_pct is None and week_pct is None:
-    raise SystemExit(0)
-
-snapshot = {
-    "source": "codepal-claude-statusline",
-    "modelDisplayName": model,
-    "fiveHourUsedPercentage": five_pct,
-    "sevenDayUsedPercentage": week_pct,
-    "resetsAt": resets_at,
-    "sevenDayResetsAt": week_resets_at,
-    "displayMode": config["displayMode"],
-    "fiveHourThreshold": config["fiveHourThreshold"],
-    "sevenDayThreshold": config["sevenDayThreshold"],
-    "hasRateLimits": five_pct is not None or week_pct is not None,
-    "updatedAt": int(time.time()),
-}
-write_snapshot(snapshot)
-
-# v4: 写入 7d 周期历史（与 displayMode 无关，off 模式也要记）
-update_history(week_pct, week_resets_at)
-
-if not should_render(config, five_pct, week_pct):
-    raise SystemExit(0)
-
-sep = f"{DIM} | {RESET}"
-line = f"{BOLD}{model}{RESET}"
-
-if five_pct is None and week_pct is None:
-    # v1.3.4: 针对非 Max 订阅 / 第三方后端 的账号(payload 里没有 rate_limits 字段),
-    # 输出明确提示替代原来的 "usage data pending",避免用户误以为是 bug。
-    # 前端通过 snapshot.updatedAt 做同样的"首次等待 vs 账号无数据"区分。
-    print(f"{line}{sep}{YELLOW}no rate limits{RESET}{DIM} (非 Max 订阅或第三方后端){RESET}")
-    raise SystemExit(0)
-
-parts = []
-parts.append(f"5h:{color_pct(five_pct)}" if five_pct is not None else f"{DIM}5h:--{RESET}")
-parts.append(f"7d:{color_pct(week_pct)}" if week_pct is not None else f"{DIM}7d:--{RESET}")
-
-if resets_at is not None:
-    try:
-        reset_dt = datetime.fromtimestamp(int(resets_at))
-        now_dt = datetime.now()
-        remaining_seconds = max(0, int((reset_dt - now_dt).total_seconds()))
-        hours, remainder = divmod(remaining_seconds, 3600)
-        minutes = remainder // 60
-        reset_local = reset_dt.strftime("%H:%M")
-        if hours > 0:
-            reset_display = f"in {hours}h {minutes:02d}m"
-        else:
-            reset_display = f"in {minutes}m"
-        parts.append(f"{DIM}resets {reset_display} ({reset_local}){RESET}")
-    except Exception:
-        pass
-
-print(f"{line}{sep}" + f"{sep}".join(parts))
-PY
-`
+  return SCRIPT_TEMPLATE
+    .replace(/__SCRIPT_VERSION__/g, () => toIntegerString(SCRIPT_VERSION, 0))
+    .replace(/__CONFIG_PATH__/g, () => escapeForBashDoubleQuote(STATUS_CONFIG_PATH))
+    .replace(/__SNAPSHOT_PATH__/g, () => escapeForBashDoubleQuote(STATUS_SNAPSHOT_PATH))
+    .replace(/__HISTORY_PATH__/g, () => escapeForBashDoubleQuote(STATUS_HISTORY_PATH))
+    .replace(/__MAX_COMPLETED_CYCLES__/g, () => toIntegerString(MAX_COMPLETED_CYCLES, 13))
 }
 
 /**
