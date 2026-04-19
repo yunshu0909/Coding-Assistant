@@ -1,0 +1,396 @@
+/* ============================================================
+   Codex 账户页样式
+   参考设计 tokens：src/styles/design-system（Cool Steel 色系）
+   ============================================================ */
+
+.codex-account-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 0 4px;
+}
+
+/* ---- 顶部提示条 ---- */
+.codex-intro-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-subtle, #f8f9fb);
+  border: 1px solid var(--border-default, #e2e5ea);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--text-secondary, #5a6070);
+  line-height: 1.6;
+}
+.codex-intro-bar__icon {
+  color: var(--color-primary, #2563eb);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* ---- 网格 ---- */
+.codex-account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+/* ---- 卡片基础 ---- */
+.codex-card {
+  background: #fff;
+  border: 1.5px solid var(--border-default, #e2e5ea);
+  border-radius: 14px;
+  padding: 18px 20px 16px;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 150ms ease;
+  position: relative;
+}
+.codex-card:hover { border-color: var(--border-strong, #cbd0d8); }
+
+/* 激活卡：浅蓝底 + 左侧 primary 彩条 */
+.codex-card--active {
+  background: var(--color-primary-light, #eff6ff);
+  border-color: #bfdbfe;
+}
+.codex-card--active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 16px; bottom: 16px;
+  width: 3px;
+  background: var(--color-primary, #2563eb);
+  border-radius: 0 3px 3px 0;
+}
+
+/* 切换中：灰底 + loading 覆盖 */
+.codex-card--switching {
+  background: var(--bg-subtle, #f8f9fb);
+}
+.codex-card--dim { opacity: 0.45; pointer-events: none; }
+
+/* 失效卡：淡红底 + 红边 */
+.codex-card--error {
+  background: var(--color-danger-bg, #fef2f2);
+  border-color: #fecaca;
+}
+
+/* 未保存卡：虚线橙边 + 浅灰底 + 左侧橙彩条 */
+.codex-card--unsaved {
+  background: var(--bg-subtle, #f8f9fb);
+  border: 1.5px dashed var(--color-warning, #d97706);
+}
+.codex-card--unsaved::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 16px; bottom: 16px;
+  width: 3px;
+  background: var(--color-warning, #d97706);
+  border-radius: 0 3px 3px 0;
+}
+
+/* ---- 卡片头 ---- */
+.codex-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.codex-card__identity { min-width: 0; flex: 1; }
+.codex-card__name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary, #1a1d23);
+  letter-spacing: -0.1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.codex-card__email {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text-tertiary, #8b919a);
+  font-family: var(--font-mono, 'SF Mono', monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- 套餐 Tag ---- */
+.codex-plan-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.codex-plan-tag--plus { color: var(--color-primary, #2563eb); background: var(--color-primary-light, #eff6ff); }
+.codex-plan-tag--pro { color: #e67e22; background: rgba(230, 126, 34, 0.1); }
+.codex-plan-tag--team { color: var(--color-success, #16a34a); background: var(--color-success-bg, #f0fdf4); }
+.codex-plan-tag--free { color: var(--text-tertiary, #8b919a); background: var(--bg-muted, #eef0f4); }
+.codex-plan-tag--unknown {
+  color: var(--text-tertiary, #8b919a);
+  background: var(--bg-muted, #eef0f4);
+  font-family: var(--font-mono, 'SF Mono', monospace);
+  font-size: 11px;
+}
+.codex-plan-tag--danger { color: var(--color-danger, #dc2626); background: var(--color-danger-bg, #fef2f2); }
+
+/* ---- 窗口行 ---- */
+.codex-card__windows {
+  margin-top: 16px;
+  padding: 12px 0;
+  border-top: 1px dashed var(--border-default, #e2e5ea);
+  border-bottom: 1px dashed var(--border-default, #e2e5ea);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.codex-window-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.codex-window-row__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #5a6070);
+}
+.codex-window-row__value {
+  font-size: 12px;
+  color: var(--text-tertiary, #8b919a);
+  font-variant-numeric: tabular-nums;
+}
+.codex-window-row__value--urgent {
+  color: var(--color-warning, #d97706);
+  font-weight: 600;
+}
+
+/* ---- Meta ---- */
+.codex-card__meta {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--text-placeholder, #aab0ba);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.codex-card__meta-label { color: var(--text-tertiary, #8b919a); }
+.codex-card__meta-value { color: var(--text-secondary, #5a6070); font-weight: 500; }
+
+/* ---- Footer ---- */
+.codex-card__footer {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.codex-card__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.codex-card__status--active { color: var(--color-success, #16a34a); }
+.codex-card__status--error { color: var(--color-danger, #dc2626); }
+.codex-card__status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ---- 更多操作按钮（圆形 ghost） ---- */
+.codex-card__menu {
+  position: relative;
+}
+.codex-btn-menu {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-tertiary, #8b919a);
+  border-radius: 6px;
+  transition: all 150ms ease;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.codex-btn-menu:hover { background: var(--bg-muted, #eef0f4); color: var(--text-primary, #1a1d23); }
+.codex-btn-menu:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.codex-menu-popup {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 160px;
+  background: #fff;
+  border: 1px solid var(--border-default, #e2e5ea);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  padding: 4px;
+  z-index: 10;
+}
+.codex-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-primary, #1a1d23);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: inherit;
+}
+.codex-menu-item:hover { background: var(--bg-subtle, #f8f9fb); }
+.codex-menu-item--danger { color: var(--color-danger, #dc2626); }
+.codex-menu-item--danger:hover { background: var(--color-danger-bg, #fef2f2); }
+
+/* ---- 切换中覆盖层 ---- */
+.codex-switching-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(248, 249, 251, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary, #2563eb);
+}
+.codex-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-default, #e2e5ea);
+  border-top-color: var(--color-primary, #2563eb);
+  border-radius: 50%;
+  animation: codex-spin 0.8s linear infinite;
+  display: inline-block;
+}
+@keyframes codex-spin { to { transform: rotate(360deg); } }
+
+/* ---- 未保存卡 提示框 ---- */
+.codex-unsaved-hint {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--color-warning-bg, #fffbeb);
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #92400e;
+  line-height: 1.6;
+}
+
+/* ---- 空态卡 ---- */
+.codex-empty-state {
+  background: #fff;
+  border: 1.5px dashed var(--border-default, #e2e5ea);
+  border-radius: 14px;
+  padding: 48px 32px;
+  text-align: center;
+}
+.codex-empty-state__icon {
+  width: 64px; height: 64px;
+  margin: 0 auto 16px;
+  border-radius: 9999px;
+  background: var(--bg-subtle, #f8f9fb);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+.codex-empty-state__icon--warning { background: var(--color-warning-bg, #fffbeb); }
+.codex-empty-state__icon--danger { background: var(--color-danger-bg, #fef2f2); }
+.codex-empty-state__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary, #1a1d23);
+  margin-bottom: 8px;
+}
+.codex-empty-state__desc {
+  font-size: 13px;
+  color: var(--text-tertiary, #8b919a);
+  line-height: 1.7;
+  max-width: 460px;
+  margin: 0 auto 20px;
+}
+.codex-empty-state__desc ol {
+  text-align: left;
+  margin: 14px auto 0;
+  max-width: 380px;
+  padding-left: 20px;
+  line-height: 1.9;
+  color: var(--text-secondary, #5a6070);
+}
+.codex-empty-state__actions {
+  display: flex; gap: 8px; justify-content: center;
+}
+.codex-empty-state__hint {
+  margin-top: 18px;
+  font-family: var(--font-mono, 'SF Mono', monospace);
+  font-size: 11px;
+  color: var(--text-placeholder, #aab0ba);
+}
+
+/* ---- Modal 内部元素 ---- */
+.codex-modal-input-label {
+  display: block;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-tertiary, #8b919a);
+  font-weight: 600;
+}
+.codex-modal-input {
+  width: 100%;
+  padding: 9px 14px;
+  margin-top: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--bg-subtle, #f8f9fb);
+  border: 1.5px solid var(--border-default, #e2e5ea);
+  border-radius: 10px;
+  outline: none;
+  color: var(--text-primary, #1a1d23);
+  transition: all 150ms ease;
+}
+.codex-modal-input:focus {
+  border-color: var(--color-primary, #2563eb);
+  background: #fff;
+}
+.codex-modal-help {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-placeholder, #aab0ba);
+}
+.codex-modal-err {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-danger, #dc2626);
+}
+.codex-modal-warn {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--color-warning-bg, #fffbeb);
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #92400e;
+  line-height: 1.6;
+}

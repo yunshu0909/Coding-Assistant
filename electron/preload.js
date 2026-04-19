@@ -629,6 +629,32 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   launchSessionInTerminal: (payload) => ipcRenderer.invoke('session-resume:launch-in-terminal', payload),
 
+  // v1.5.0 Codex 账户切换 APIs
+
+  /**
+   * 命名空间式接口，避免污染顶层 electronAPI
+   */
+  codexAccount: {
+    list: () => ipcRenderer.invoke('codex-account:list'),
+    save: (name) => ipcRenderer.invoke('codex-account:save', { name }),
+    switch: (targetName) => ipcRenderer.invoke('codex-account:switch', { targetName }),
+    rename: (oldName, newName) =>
+      ipcRenderer.invoke('codex-account:rename', { oldName, newName }),
+    delete: (name) => ipcRenderer.invoke('codex-account:delete', { name }),
+    detectStorage: () => ipcRenderer.invoke('codex-account:detect-storage'),
+    openCodex: () => ipcRenderer.invoke('codex-account:open-codex'),
+    /**
+     * 订阅"新账户检测"推送
+     * @param {(payload: object) => void} handler
+     * @returns {() => void} unsubscribe
+     */
+    onNewAccountDetected(handler) {
+      const wrapped = (_event, payload) => handler(payload)
+      ipcRenderer.on('codex-account:new-account-detected', wrapped)
+      return () => ipcRenderer.removeListener('codex-account:new-account-detected', wrapped)
+    },
+  },
+
   // 文档查阅 APIs
 
   /**

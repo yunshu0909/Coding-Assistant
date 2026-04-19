@@ -43,6 +43,7 @@ const { registerMcpHandlers } = require('./handlers/registerMcpHandlers')
 const { registerNetworkDiagnosticsHandlers } = require('./handlers/registerNetworkDiagnosticsHandlers')
 const { registerSessionBrowserHandlers } = require('./handlers/registerSessionBrowserHandlers')
 const { registerSessionResumeHandlers } = require('./handlers/registerSessionResumeHandlers')
+const { registerCodexAccountHandlers, stopCodexAccountWatcher } = require('./handlers/registerCodexAccountHandlers')
 const { registerDocBrowserHandlers } = require('./handlers/registerDocBrowserHandlers')
 const { initDocBrowserStore } = require('./services/docBrowserService')
 const { startIpMonitor } = require('./services/networkDiagnosticsService')
@@ -217,6 +218,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   repoWatcherCleanup?.stopWatching().catch(() => {})
+  stopCodexAccountWatcher().catch(() => {})
   if (process.platform !== 'darwin') {
     app.quit()
   }
@@ -732,6 +734,11 @@ registerSessionBrowserHandlers({
 
 registerSessionResumeHandlers({
   ipcMain,
+})
+
+registerCodexAccountHandlers({
+  ipcMain,
+  getMainWindow: () => mainWindow,
 })
 
 registerDocBrowserHandlers({
