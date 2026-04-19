@@ -2,29 +2,46 @@
  * 费用计算模块
  *
  * 负责：
- * - 基于 pricing.json 计算各模型的预估费用（人民币）
+ * - 基于 pricing.json 计算各模型的预估费用（美元）
  * - 模型名归一化（展示名 → 定价表 key）
  * - 费用格式化显示
+ * - 支持运行时 override：应用启动后可调用 setPricingOverride 注入远程拉到的 pricing
+ *
+ * 为什么保留同步 import + override 机制（而不是改成纯异步）：
+ * - calculateCosts 被多处同步调用，改异步会牵扯所有组件加载时序
+ * - 保留 import 作为兜底，异步加载成功后覆盖，兼顾了可用性和最新性
  *
  * @module store/costCalculator
  */
 
 import pricingData from '../config/pricing.json';
 
-const { exchangeRate, models: pricingModels } = pricingData;
+// 当前生效的 pricing（默认用 import 的，启动后可被 setPricingOverride 覆盖）
+let activePricing = pricingData;
+
+/**
+ * 用远程拉到的 pricing 覆盖本地 import 的默认值
+ * 仅在 App 启动流程里被调用一次（从主进程 IPC 拉到后）
+ * @param {object} remotePricing - 远程 registry 数据
+ */
+export function setPricingOverride(remotePricing) {
+  if (!remotePricing || typeof remotePricing !== 'object') return;
+  if (!remotePricing.models || typeof remotePricing.models !== 'object') return;
+  activePricing = remotePricing;
+}
 
 /**
  * 将模型展示名转换为定价表 key
  * 规则：小写 + 空格→连字符 + 点→连字符
- * @param {string} name - 模型展示名（如 "Claude Opus 4.6"）
- * @returns {string} 定价表 key（如 "claude-opus-4-6"）
+ * @param {string} name - 模型展示名（如 "Claude Opus 4.7"）
+ * @returns {string} 定价表 key（如 "claude-opus-4-7"）
  */
 function normalizeModelKey(name) {
   return name.toLowerCase().replace(/[\s.]+/g, '-');
 }
 
 /**
- * 计算每个模型的预估费用（人民币）
+ * 计算每个模型的预估费用（美元）
  * @param {Array<{name: string, input: number, output: number, cacheRead: number, cacheCreate: number}>} models
  * @returns {{ totalCost: number|null, modelCosts: Map<string, number|null> }}
  */
@@ -33,6 +50,7 @@ export function calculateCosts(models) {
     return { totalCost: null, modelCosts: new Map() };
   }
 
+  const pricingModels = activePricing.models;
   const modelCosts = new Map();
   let totalUsd = 0;
   let hasKnown = false;

@@ -392,6 +392,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   getModelRegistry: () => ipcRenderer.invoke('model-registry:get'),
 
+  /**
+   * 获取当前生效的定价注册表（exchangeRate + models 定价表）
+   * 来源优先级：userData cache（远程拉回的） > 打包 json > 硬编码兜底
+   * @returns {Promise<{success: boolean, registry: object, source: string}>}
+   */
+  getPricingRegistry: () => ipcRenderer.invoke('pricing-registry:get'),
+
   // Claude Code 会员额度状态 APIs
 
   /**

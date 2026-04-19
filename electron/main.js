@@ -31,10 +31,13 @@ const { registerProjectInitHandlers } = require('./handlers/registerProjectInitH
 const { registerPermissionModeHandlers } = require('./handlers/permissionModeHandlers')
 const { registerModelConfigHandlers } = require('./handlers/modelConfigHandlers')
 const { registerModelRegistryHandlers } = require('./handlers/registerModelRegistryHandlers')
+const { registerPricingRegistryHandlers } = require('./handlers/registerPricingRegistryHandlers')
 const {
-  initModelRegistry,
-  refreshRegistryInBackground,
-} = require('./services/modelRegistryService')
+  initRemoteConfig,
+  refreshRemoteConfigInBackground,
+} = require('./services/remoteConfigLoader')
+const { modelRegistrySpec } = require('./services/registries/modelRegistry')
+const { pricingRegistrySpec } = require('./services/registries/pricingRegistry')
 const { registerClaudeUsageStatusHandlers } = require('./handlers/registerClaudeUsageStatusHandlers')
 const { registerMcpHandlers } = require('./handlers/registerMcpHandlers')
 const { registerNetworkDiagnosticsHandlers } = require('./handlers/registerNetworkDiagnosticsHandlers')
@@ -149,31 +152,40 @@ app.whenReady().then(async () => {
     getMainWindow: () => mainWindow,
   })
 
-  // 加载模型注册表（cache > packaged > hardcoded），IPC 就绪前必须完成
-  try {
-    const initResult = await initModelRegistry({ getUserDataPath: () => app.getPath('userData') })
-    console.log(`[model-registry] loaded from ${initResult.source}, version=${initResult.version}`)
-  } catch (error) {
-    console.warn('[model-registry] init failed:', error?.message || error)
+  // 加载所有远程配置（cache > packaged > hardcoded），IPC 就绪前必须完成
+  // 每个 registry 独立失败隔离：一个坏不影响其他
+  const remoteConfigSpecs = [modelRegistrySpec, pricingRegistrySpec]
+  const getUserDataPath = () => app.getPath('userData')
+
+  for (const spec of remoteConfigSpecs) {
+    try {
+      const initResult = await initRemoteConfig(spec, { getUserDataPath })
+      console.log(`[${spec.name}] loaded from ${initResult.source}, version=${initResult.version}`)
+    } catch (error) {
+      console.warn(`[${spec.name}] init failed:`, error?.message || error)
+    }
   }
 
   registerModelRegistryHandlers({ ipcMain })
+  registerPricingRegistryHandlers({ ipcMain })
 
   createWindow()
 
-  // 启动后异步后台刷新 registry（不阻塞启动；结果下次启动才生效，避免 UI 中途跳变）
+  // 启动后异步后台刷新所有 registry（不阻塞启动；结果下次启动才生效，避免 UI 中途跳变）
   setTimeout(() => {
-    refreshRegistryInBackground({ getUserDataPath: () => app.getPath('userData') })
-      .then((result) => {
-        if (result.success) {
-          console.log(`[model-registry] refreshed from ${result.source}, version=${result.version}`)
-        } else {
-          console.warn(`[model-registry] refresh skipped: ${result.error}`)
-        }
-      })
-      .catch((error) => {
-        console.warn('[model-registry] refresh unexpected failure:', error?.message || error)
-      })
+    for (const spec of remoteConfigSpecs) {
+      refreshRemoteConfigInBackground(spec, { getUserDataPath })
+        .then((result) => {
+          if (result.success) {
+            console.log(`[${spec.name}] refreshed from ${result.source}, version=${result.version}`)
+          } else {
+            console.warn(`[${spec.name}] refresh skipped: ${result.error}`)
+          }
+        })
+        .catch((error) => {
+          console.warn(`[${spec.name}] refresh unexpected failure:`, error?.message || error)
+        })
+    }
   }, 2000)
 
   // 启动即检查一次新版本，先做提醒式更新，不在应用内直接下载安装。

@@ -1,14 +1,12 @@
 {
   "$schema": "./model-registry.schema.json",
-  "version": "2026-04-18",
+  "version": "2026-04-18.1",
   "updatedAt": "2026-04-18",
-  "notes": "CodePal 模型配置注册表。jsDelivr / GitHub Raw 会直接拉取此文件；不发版更新时，只需修改此文件并 push master。",
+  "notes": "CodePal 模型配置注册表。精简为 3 个有效 Claude 别名（opus[1m] / sonnet[1m] / haiku）。无后缀的 opus / sonnet 在 Claude 4.7 后实质等价于 [1m] 变体，为避免用户混淆不再在 UI 暴露，但 Claude Code CLI 自身仍然支持这些别名，用户可通过自定义输入框手动填入。",
   "models": [
-    { "id": "opus[1m]", "display": "Opus (1M)", "sublabel": "最强 · 1M" },
-    { "id": "opus", "display": "Opus", "sublabel": "最强 · 200K" },
-    { "id": "sonnet", "display": "Sonnet", "sublabel": "日常" },
-    { "id": "sonnet[1m]", "display": "Sonnet (1M)", "sublabel": "日常 · 1M" },
-    { "id": "haiku", "display": "Haiku", "sublabel": "快速" }
+    { "id": "opus[1m]", "display": "Opus 4.7", "sublabel": "最强 · 1M" },
+    { "id": "sonnet[1m]", "display": "Sonnet 4.6", "sublabel": "日常 · 1M" },
+    { "id": "haiku", "display": "Haiku 4.5", "sublabel": "快速 · 200K" }
   ],
   "effortLevels": [
     { "id": "low", "display": "低", "desc": "快速响应，适合简单问答" },

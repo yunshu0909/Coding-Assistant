@@ -19,11 +19,9 @@ import StateView from '../components/StateView/StateView'
 // （它本身已经有三层兜底：userData cache > 打包 json > 主进程硬编码）
 const FALLBACK_REGISTRY = {
   models: [
-    { id: 'opus[1m]', display: 'Opus (1M)', sublabel: '最强 · 1M' },
-    { id: 'opus', display: 'Opus', sublabel: '最强 · 200K' },
-    { id: 'sonnet', display: 'Sonnet', sublabel: '日常' },
-    { id: 'sonnet[1m]', display: 'Sonnet (1M)', sublabel: '日常 · 1M' },
-    { id: 'haiku', display: 'Haiku', sublabel: '快速' },
+    { id: 'opus[1m]', display: 'Opus 4.7', sublabel: '最强 · 1M' },
+    { id: 'sonnet[1m]', display: 'Sonnet 4.6', sublabel: '日常 · 1M' },
+    { id: 'haiku', display: 'Haiku 4.5', sublabel: '快速 · 200K' },
   ],
   effortLevels: [
     { id: 'low', display: '低', desc: '快速响应，适合简单问答' },

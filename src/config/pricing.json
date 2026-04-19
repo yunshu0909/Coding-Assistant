@@ -1,6 +1,15 @@
 {
+  "version": "2026-04-18",
+  "updatedAt": "2026-04-18",
   "exchangeRate": 7.22,
   "models": {
+    "claude-opus-4-7": {
+      "displayName": "Claude Opus 4.7",
+      "input": 5.00,
+      "output": 25.00,
+      "cacheRead": 0.50,
+      "cacheWrite": 6.25
+    },
     "claude-opus-4-6": {
       "displayName": "Claude Opus 4.6",
       "input": 5.00,
@@ -16,6 +25,13 @@
       "cacheWrite": 3.75
     },
     "claude-haiku-4-5": {
+      "displayName": "Claude Haiku 4.5",
+      "input": 1.00,
+      "output": 5.00,
+      "cacheRead": 0.10,
+      "cacheWrite": 1.25
+    },
+    "claude-haiku-4-5-20251001": {
       "displayName": "Claude Haiku 4.5",
       "input": 1.00,
       "output": 5.00,

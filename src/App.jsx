@@ -26,6 +26,7 @@ import SessionBrowserPage from './pages/SessionBrowserPage'
 import DocBrowserPage from './pages/DocBrowserPage'
 import Toast from './components/Toast'
 import { dataStore } from './store/data'
+import { setPricingOverride } from './store/costCalculator'
 
 const AUTO_INCREMENTAL_REFRESH_INTERVAL_MS = 5 * 60 * 1000
 const DEFAULT_ACTIVE_MODULE = 'permission'
@@ -65,6 +66,22 @@ export default function App() {
   const [skillsRefreshSignal, setSkillsRefreshSignal] = useState(0)
   // 应用更新状态：由主进程统一检查并推送，渲染层只负责展示
   const [appUpdateState, setAppUpdateState] = useState(INITIAL_APP_UPDATE_STATE)
+
+  // 启动时异步加载最新 pricing 覆盖 import 的默认值
+  // 失败静默，不影响应用运行（会 fallback 到打包的 pricing.json）
+  useEffect(() => {
+    const loadRemotePricing = async () => {
+      try {
+        const result = await window.electronAPI.getPricingRegistry()
+        if (result?.success && result.registry) {
+          setPricingOverride(result.registry)
+        }
+      } catch (error) {
+        console.warn('[cost] getPricingRegistry failed:', error?.message || error)
+      }
+    }
+    loadRemotePricing()
+  }, [])
 
   // 启动时检查中央仓库状态，决定初始页面
   useEffect(() => {

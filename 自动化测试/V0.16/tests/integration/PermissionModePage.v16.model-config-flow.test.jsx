@@ -63,11 +63,9 @@ function createElectronApiMock(overrides = {}) {
       registry: {
         version: 'test',
         models: [
-          { id: 'opus[1m]', display: 'Opus (1M)', sublabel: '最强 · 1M' },
-          { id: 'opus', display: 'Opus', sublabel: '最强 · 200K' },
-          { id: 'sonnet', display: 'Sonnet', sublabel: '日常' },
-          { id: 'sonnet[1m]', display: 'Sonnet (1M)', sublabel: '日常 · 1M' },
-          { id: 'haiku', display: 'Haiku', sublabel: '快速' },
+          { id: 'opus[1m]', display: 'Opus 4.7', sublabel: '最强 · 1M' },
+          { id: 'sonnet[1m]', display: 'Sonnet 4.6', sublabel: '日常 · 1M' },
+          { id: 'haiku', display: 'Haiku 4.5', sublabel: '快速 · 200K' },
         ],
         effortLevels: [
           { id: 'low', display: '低', desc: '快速响应，适合简单问答' },
@@ -104,7 +102,7 @@ describe('V0.16 Model Config Tab Formal Flow (Integration)', () => {
     render(<PermissionModePage />)
     await openModelTab()
 
-    expect(screen.getByText('Opus (1M)')).toBeTruthy()
+    expect(screen.getByText('Opus 4.7')).toBeTruthy()
     expect(screen.getByTestId('model-radio-opus[1m]').className).toContain('is-selected')
     expect(screen.getByTestId('effort-radio-high').className).toContain('is-selected')
   })
@@ -113,7 +111,7 @@ describe('V0.16 Model Config Tab Formal Flow (Integration)', () => {
     window.electronAPI = createElectronApiMock({
       getModelConfig: vi.fn().mockResolvedValue({
         success: true,
-        model: 'sonnet',
+        model: 'sonnet[1m]',
         effortLevel: null,
         isModelConfigured: true,
         isEffortConfigured: false,
@@ -123,9 +121,9 @@ describe('V0.16 Model Config Tab Formal Flow (Integration)', () => {
     render(<PermissionModePage />)
     await openModelTab()
 
-    expect(screen.getByText('Sonnet')).toBeTruthy()
+    expect(screen.getByText('Sonnet 4.6')).toBeTruthy()
     expect(screen.getByText('未显式配置，使用 Claude 默认值')).toBeTruthy()
-    expect(screen.getByTestId('model-radio-sonnet').className).toContain('is-selected')
+    expect(screen.getByTestId('model-radio-sonnet[1m]').className).toContain('is-selected')
     expect(screen.getByTestId('effort-radio-low').className).not.toContain('is-selected')
     expect(screen.getByTestId('effort-radio-high').className).not.toContain('is-selected')
   })
@@ -148,8 +146,6 @@ describe('V0.16 Model Config Tab Formal Flow (Integration)', () => {
     expect(screen.getByTestId('effort-radio-medium').className).toContain('is-selected')
     expect(screen.getByTestId('model-radio-default').className).not.toContain('is-selected')
     expect(screen.getByTestId('model-radio-opus[1m]').className).not.toContain('is-selected')
-    expect(screen.getByTestId('model-radio-opus').className).not.toContain('is-selected')
-    expect(screen.getByTestId('model-radio-sonnet').className).not.toContain('is-selected')
     expect(screen.getByTestId('model-radio-sonnet[1m]').className).not.toContain('is-selected')
     expect(screen.getByTestId('model-radio-haiku').className).not.toContain('is-selected')
   })
@@ -165,13 +161,13 @@ describe('V0.16 Model Config Tab Formal Flow (Integration)', () => {
     render(<PermissionModePage />)
     await openModelTab()
 
-    fireEvent.click(screen.getByTestId('model-radio-sonnet'))
+    fireEvent.click(screen.getByTestId('model-radio-sonnet[1m]'))
 
     await waitFor(() => {
-      expect(setModelConfig).toHaveBeenCalledWith('model', 'sonnet')
+      expect(setModelConfig).toHaveBeenCalledWith('model', 'sonnet[1m]')
     })
-    expect(screen.getByText('已切换默认模型为「Sonnet」')).toBeTruthy()
-    expect(screen.getByTestId('model-radio-sonnet').className).toContain('is-selected')
+    expect(screen.getByText('已切换默认模型为「Sonnet 4.6」')).toBeTruthy()
+    expect(screen.getByTestId('model-radio-sonnet[1m]').className).toContain('is-selected')
   })
 
   it('TC-FE-05: 自定义模型为空时应提示错误且不写入', async () => {
@@ -247,7 +243,7 @@ describe('V0.16 Model Config Tab Formal Flow (Integration)', () => {
 
     fireEvent.click(screen.getByTestId('model-radio-haiku'))
 
-    expect(screen.getByTestId('model-radio-sonnet').className).toContain('is-disabled')
+    expect(screen.getByTestId('model-radio-sonnet[1m]').className).toContain('is-disabled')
     expect(screen.getByTestId('effort-radio-medium').className).toContain('is-disabled')
     expect(screen.getByTestId('model-custom-input').hasAttribute('disabled')).toBe(true)
     expect(screen.getByTestId('model-custom-apply').hasAttribute('disabled')).toBe(true)
@@ -255,7 +251,7 @@ describe('V0.16 Model Config Tab Formal Flow (Integration)', () => {
     deferred.resolve({ success: true, error: null, errorCode: null })
 
     await waitFor(() => {
-      expect(screen.getByText('已切换默认模型为「Haiku」')).toBeTruthy()
+      expect(screen.getByText('已切换默认模型为「Haiku 4.5」')).toBeTruthy()
     })
     expect(screen.getByTestId('model-custom-input').hasAttribute('disabled')).toBe(false)
     expect(screen.getByTestId('model-custom-apply').hasAttribute('disabled')).toBe(false)
@@ -270,7 +266,7 @@ describe('V0.16 Model Config Tab Formal Flow (Integration)', () => {
     window.electronAPI = createElectronApiMock({
       getModelConfig: vi.fn().mockResolvedValue({
         success: true,
-        model: 'sonnet',
+        model: 'sonnet[1m]',
         effortLevel: 'high',
         isModelConfigured: true,
         isEffortConfigured: true,
@@ -286,7 +282,7 @@ describe('V0.16 Model Config Tab Formal Flow (Integration)', () => {
     await waitFor(() => {
       expect(screen.getByText('写入失败')).toBeTruthy()
     })
-    expect(screen.getByTestId('model-radio-sonnet').className).toContain('is-selected')
+    expect(screen.getByTestId('model-radio-sonnet[1m]').className).toContain('is-selected')
     expect(screen.getByTestId('model-radio-haiku').className).not.toContain('is-selected')
   })
 
@@ -312,7 +308,7 @@ describe('V0.16 Model Config Tab Formal Flow (Integration)', () => {
     fireEvent.click(screen.getByRole('button', { name: '重试' }))
 
     await screen.findByTestId('model-status-card')
-    expect(screen.getByText('Haiku')).toBeTruthy()
+    expect(screen.getByText('Haiku 4.5')).toBeTruthy()
     expect(getModelConfig).toHaveBeenCalledTimes(2)
   })
 
@@ -321,7 +317,7 @@ describe('V0.16 Model Config Tab Formal Flow (Integration)', () => {
     window.electronAPI = createElectronApiMock({
       getModelConfig: vi.fn().mockResolvedValue({
         success: true,
-        model: 'sonnet',
+        model: 'sonnet[1m]',
         effortLevel: 'medium',
         isModelConfigured: true,
         isEffortConfigured: true,
@@ -332,7 +328,7 @@ describe('V0.16 Model Config Tab Formal Flow (Integration)', () => {
     render(<PermissionModePage />)
     await openModelTab()
 
-    fireEvent.click(screen.getByTestId('model-radio-sonnet'))
+    fireEvent.click(screen.getByTestId('model-radio-sonnet[1m]'))
     fireEvent.click(screen.getByTestId('effort-radio-medium'))
 
     expect(setModelConfig).toHaveBeenCalledTimes(0)

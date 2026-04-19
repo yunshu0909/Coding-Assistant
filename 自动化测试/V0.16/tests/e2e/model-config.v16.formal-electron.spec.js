@@ -114,14 +114,14 @@ test.describe('V0.16 Model Config Formal E2E (Electron)', () => {
     await expect(page.getByTestId('model-status-card')).toContainText('Default')
     await expect(page.getByTestId('model-status-card')).toContainText('中')
 
-    await page.getByTestId('model-radio-sonnet').click()
-    await expect(page.getByText('已切换默认模型为「Sonnet」')).toBeVisible()
+    await page.getByTestId('model-radio-sonnet[1m]').click()
+    await expect(page.getByText('已切换默认模型为「Sonnet 4.6」')).toBeVisible()
 
     await page.getByTestId('effort-radio-high').click()
     await expect(page.getByText('已切换推理等级为「高」')).toBeVisible()
 
     const parsed = JSON.parse(await fs.readFile(settingsPath, 'utf-8'))
-    expect(parsed.model).toBe('sonnet')
+    expect(parsed.model).toBe('sonnet[1m]')
     expect(parsed.effortLevel).toBe('high')
   })
 
@@ -164,7 +164,7 @@ test.describe('V0.16 Model Config Formal E2E (Electron)', () => {
 
     await page.getByRole('button', { name: '重试' }).click()
     await expect(page.getByTestId('model-status-card')).toBeVisible()
-    await expect(page.getByTestId('model-status-card')).toContainText('Haiku')
+    await expect(page.getByTestId('model-status-card')).toContainText('Haiku 4.5')
     await expect(page.getByTestId('model-status-card')).toContainText('低')
   })
 })
