@@ -18,6 +18,7 @@ const { readSessionCwd, launchInNewTerminal, __INTERNAL__ } = service
 const {
   escapeSingleQuote,
   escapeAppleScriptString,
+  buildLaunchAppleScriptArgs,
   CLAUDE_PROJECTS_DIR,
   __setExecFile,
   __resetExecFile,
@@ -81,6 +82,21 @@ describe('escapeAppleScriptString', () => {
   })
   it('普通字符串不变', () => {
     expect(escapeAppleScriptString('cd /Users/a && claude')).toBe('cd /Users/a && claude')
+  })
+})
+
+describe('buildLaunchAppleScriptArgs', () => {
+  it('带 profile 时会显式设置新窗口 current settings', () => {
+    const args = buildLaunchAppleScriptArgs('cd /tmp && claude --resume 123', 'OneDark')
+    expect(args).toContain('set launchTab to do script ""')
+    expect(args).toContain('set current settings of launchTab to settings set "OneDark"')
+    expect(args).toContain('do script "cd /tmp && claude --resume 123" in launchTab')
+  })
+
+  it('profile 为空时跳过 current settings 语句', () => {
+    const args = buildLaunchAppleScriptArgs('cd /tmp && claude --resume 123', null)
+    expect(args).not.toContain('set current settings of launchTab to settings set "OneDark"')
+    expect(args).toContain('do script "cd /tmp && claude --resume 123" in launchTab')
   })
 })
 
@@ -177,7 +193,11 @@ describe('launchInNewTerminal - 参数校验', () => {
 
 describe('launchInNewTerminal - execFile 调用', () => {
   it('成功路径：osascript 返回 0 → {success:true}', async () => {
-    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => {
+    execFileMock.mockImplementation((cmd, _args, _opts, cb) => {
+      if (cmd === 'defaults') {
+        cb(null, 'OneDark\n', '')
+        return
+      }
       cb(null, 'tab 1 of window id 123', '')
     })
     const r = await launchInNewTerminal('/tmp', UUID)
@@ -185,7 +205,11 @@ describe('launchInNewTerminal - execFile 调用', () => {
   })
 
   it('失败路径：execFile 错误 → {success:false, error:...}', async () => {
-    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => {
+    execFileMock.mockImplementation((cmd, _args, _opts, cb) => {
+      if (cmd === 'defaults') {
+        cb(null, 'OneDark\n', '')
+        return
+      }
       const err = new Error('spawn ENOENT')
       cb(err, '', 'osascript: command not found')
     })
@@ -195,13 +219,19 @@ describe('launchInNewTerminal - execFile 调用', () => {
   })
 
   it('cwd 含单引号 → 命令被正确转义', async () => {
-    let capturedArgs
-    execFileMock.mockImplementation((_cmd, args, _opts, cb) => {
+    let capturedArgs = null
+    execFileMock.mockImplementation((cmd, args, _opts, cb) => {
+      if (cmd === 'defaults') {
+        cb(null, 'OneDark\n', '')
+        return
+      }
       capturedArgs = args
       cb(null, 'ok', '')
     })
     await launchInNewTerminal("/Users/O'Brien/proj", UUID)
-    const doScriptArg = capturedArgs.find(a => a.startsWith('do script'))
+    const doScriptArg = capturedArgs.find(
+      a => a.startsWith('do script "') && a.includes(`claude --resume ${UUID}`),
+    )
     // 两重转义：
     //   shell 层：' → '\''（关单引号 + 转义引号 + 重开单引号）
     //   AppleScript do script 层：\ → \\（因为 do script 的字符串参数又包了一层双引号）
@@ -211,13 +241,54 @@ describe('launchInNewTerminal - execFile 调用', () => {
   })
 
   it('命令末尾包含 claude --resume <uuid>', async () => {
-    let capturedArgs
-    execFileMock.mockImplementation((_cmd, args, _opts, cb) => {
+    let capturedArgs = null
+    execFileMock.mockImplementation((cmd, args, _opts, cb) => {
+      if (cmd === 'defaults') {
+        cb(null, 'OneDark\n', '')
+        return
+      }
       capturedArgs = args
       cb(null, 'ok', '')
     })
     await launchInNewTerminal('/tmp', UUID)
-    const doScriptArg = capturedArgs.find(a => a.startsWith('do script'))
+    const doScriptArg = capturedArgs.find(
+      a => a.startsWith('do script "') && a.includes(`claude --resume ${UUID}`),
+    )
     expect(doScriptArg).toContain(`claude --resume ${UUID}`)
+  })
+
+  it('会把新窗口显式切到当前默认 profile，避免沿用旧窗口颜色', async () => {
+    let capturedArgs = null
+    execFileMock.mockImplementation((cmd, args, _opts, cb) => {
+      if (cmd === 'defaults') {
+        cb(null, 'Nord\n', '')
+        return
+      }
+      capturedArgs = args
+      cb(null, 'ok', '')
+    })
+
+    await launchInNewTerminal('/tmp', UUID)
+
+    expect(capturedArgs).toContain('set launchTab to do script ""')
+    expect(capturedArgs).toContain('set current settings of launchTab to settings set "Nord"')
+  })
+
+  it('默认 profile 读取失败时，仍会继续启动 Terminal', async () => {
+    let capturedArgs = null
+    execFileMock.mockImplementation((cmd, args, _opts, cb) => {
+      if (cmd === 'defaults') {
+        cb(new Error('defaults failed'), '', '')
+        return
+      }
+      capturedArgs = args
+      cb(null, 'ok', '')
+    })
+
+    const result = await launchInNewTerminal('/tmp', UUID)
+
+    expect(result.success).toBe(true)
+    expect(capturedArgs).toContain('set launchTab to do script ""')
+    expect(capturedArgs.some((arg) => arg.includes('set current settings of launchTab'))).toBe(false)
   })
 })

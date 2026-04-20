@@ -117,8 +117,9 @@ function escapeAppleScriptString(s) {
  * 执行步骤：
  *   1. 校验 uuid 合法（防御性，上层也会验）
  *   2. 构造 shell 命令：cd '<cwd>' && claude --resume <uuid>
- *   3. 构造 AppleScript：tell Terminal / activate / do script "..." / end tell
- *   4. execFile 调 osascript（不走 shell）避免注入
+ *   3. 读取当前 Terminal 默认 profile 名
+ *   4. 先开一个新 Terminal 窗口，再显式把该窗口切到默认 profile
+ *   5. 在新窗口执行命令，避免受 Terminal「New windows open with = Same Profile」影响
  *
  * @param {string} cwd - 原 session 工作目录（上层已保证非空，存在性上层检测过）
  * @param {string} uuid - session UUID
@@ -134,28 +135,89 @@ async function launchInNewTerminal(cwd, uuid) {
 
   // 1. shell 命令：单引号包 cwd，内部单引号做 '\'' 转义
   const shellCmd = `cd '${escapeSingleQuote(cwd)}' && claude --resume ${uuid}`
+  const profileName = await readDefaultWindowSettingsName()
 
-  // 2. AppleScript 的 do script 参数：转义 \ 和 "
-  const appleArg = escapeAppleScriptString(shellCmd)
+  try {
+    const args = buildLaunchAppleScriptArgs(shellCmd, profileName)
+    await execFileAsync('osascript', args, { timeout: OSASCRIPT_TIMEOUT_MS })
+    return { success: true }
+  } catch (err) {
+    const msg = (err?.stderr && err.stderr.trim()) || err?.message || 'OSASCRIPT_FAILED'
+    return { success: false, error: msg }
+  }
+}
 
-  // 3. execFile 不起 shell，每个 -e 参数原样传给 osascript
-  const args = [
-    '-e', 'tell application "Terminal"',
-    '-e', 'activate',
-    '-e', `do script "${appleArg}"`,
-    '-e', 'end tell',
-  ]
-
-  return new Promise((resolve) => {
-    _execFile('osascript', args, { timeout: OSASCRIPT_TIMEOUT_MS }, (err, _stdout, stderr) => {
+/**
+ * Promise 版 execFile，方便串行跑 defaults / osascript
+ * @param {string} cmd
+ * @param {string[]} args
+ * @param {object} [options]
+ * @returns {Promise<{stdout: string, stderr: string}>}
+ */
+function execFileAsync(cmd, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    _execFile(cmd, args, options, (err, stdout, stderr) => {
       if (err) {
-        const msg = (stderr && stderr.trim()) || err.message || 'OSASCRIPT_FAILED'
-        resolve({ success: false, error: msg })
-      } else {
-        resolve({ success: true })
+        err.stderr = stderr
+        reject(err)
+        return
       }
+      resolve({ stdout: stdout || '', stderr: stderr || '' })
     })
   })
+}
+
+/**
+ * 读取 Terminal 当前默认 profile 名
+ * 用于在 resume 新窗口上显式套用，避免被用户 Terminal 的"Same Profile"偏好覆盖。
+ *
+ * @returns {Promise<string | null>}
+ */
+async function readDefaultWindowSettingsName() {
+  try {
+    const { stdout } = await execFileAsync('defaults', [
+      'read', 'com.apple.Terminal', 'Default Window Settings',
+    ])
+    return (stdout || '').trim() || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 构造 osascript 参数
+ * 先开空白新窗，再把它切到当前默认 profile，最后在该窗执行 resume 命令。
+ *
+ * @param {string} shellCmd
+ * @param {string | null} profileName
+ * @returns {string[]}
+ */
+function buildLaunchAppleScriptArgs(shellCmd, profileName) {
+  const appleCmd = escapeAppleScriptString(shellCmd)
+  const args = [
+    '-e', 'tell application "Terminal"',
+    '-e', 'set launchTab to do script ""',
+  ]
+
+  // 直接改 do script 返回的新 tab，避免 front window 在 Terminal 已运行时指向旧窗口
+  if (profileName) {
+    const escapedProfileName = escapeAppleScriptString(profileName)
+    args.push(
+      '-e',
+      `set current settings of launchTab to settings set "${escapedProfileName}"`,
+    )
+  }
+
+  args.push(
+    '-e',
+    `do script "${appleCmd}" in launchTab`,
+    '-e',
+    'activate',
+    '-e',
+    'end tell',
+  )
+
+  return args
 }
 
 module.exports = {
@@ -167,6 +229,8 @@ module.exports = {
     OSASCRIPT_TIMEOUT_MS,
     escapeSingleQuote,
     escapeAppleScriptString,
+    buildLaunchAppleScriptArgs,
+    readDefaultWindowSettingsName,
     CLAUDE_PROJECTS_DIR,
     __setExecFile(fn) { _execFile = fn },
     __resetExecFile() { _execFile = childProcess.execFile },

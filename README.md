@@ -2,7 +2,7 @@
 
 > AI 编程工具负责写代码，CodePal 负责写代码之外的一切 —— Skills 调度、账户切换、额度监控、对话回顾、跨工具统一管理。专为 **Claude Code / Codex / Cursor / Trae** 用户打造。
 
-[![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-black?logo=apple)](https://github.com/yunshu0909/CodePal/releases) [![version](https://img.shields.io/badge/version-v1.5.0-blue)](https://github.com/yunshu0909/CodePal/releases/latest) [![license](https://img.shields.io/badge/license-ISC-green)](#license)
+[![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-black?logo=apple)](https://github.com/yunshu0909/CodePal/releases) [![version](https://img.shields.io/badge/version-v1.5.1-blue)](https://github.com/yunshu0909/CodePal/releases/latest) [![license](https://img.shields.io/badge/license-ISC-green)](#license)
 
 ---
 
@@ -211,13 +211,14 @@ skill-manager/
 
 完整版本信息见 [GitHub Releases](https://github.com/yunshu0909/CodePal/releases)。
 
-**最新版本：[v1.5.0](https://github.com/yunshu0909/CodePal/releases/tag/v1.5.0)**
+**最新版本：[v1.5.1](https://github.com/yunshu0909/CodePal/releases/tag/v1.5.1)**
 
-- ✨ 新增「Codex 账户」模块 —— 多账户一键切换
-- 🔧 侧栏分组调整：「用量看板」→「账户与用量」
-- 🧹 「API 配置」从侧栏隐藏（代码保留，未来恢复）
+- 🐞 Debug 专用发版：补上 `src/config/*.json` 打包与安全兜底，避免安装包启动时报 `model-registry.json` 缺失
+- 🎨 新增「终端外观」模块，支持内置 Terminal 主题导入
+- 🔁 对话回顾页补齐历史会话恢复链路，便于复现与排查
 
 之前的里程碑版本：
+- **v1.5.0** — Codex 多账户切换 + 侧栏分组调整
 - **v1.4.5** — 对话回顾支持"启动历史对话"（复制 resume / 新终端启动）
 - **v1.4.1** — 满载率趋势（7d 周期峰值 + 最近 4 周）
 - **v1.3.4** — Claude 会员额度状态栏集成（statusLine rate_limits）

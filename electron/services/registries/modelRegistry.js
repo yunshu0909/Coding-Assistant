@@ -13,6 +13,8 @@
  * @module electron/services/registries/modelRegistry
  */
 
+const { loadPackagedJson } = require('./loadPackagedJson')
+
 // effortLevel id 格式校验与 modelConfigHandlers 后端白名单保持一致
 const EFFORT_ID_PATTERN = /^[a-z0-9_-]{1,32}$/
 
@@ -86,7 +88,7 @@ const modelRegistrySpec = {
   name: 'model-registry',
   remotePath: 'src/config/model-registry.json',
   cacheFileName: 'model-registry.cache.json',
-  packaged: require('../../../src/config/model-registry.json'),
+  packaged: loadPackagedJson('src/config/model-registry.json'),
   hardcoded: HARDCODED_MODEL_FALLBACK,
   validate: validateModelRegistry,
 }

@@ -16,6 +16,8 @@
  * @module electron/services/registries/pricingRegistry
  */
 
+const { loadPackagedJson } = require('./loadPackagedJson')
+
 // 硬编码兜底：Claude 三大模型 + 基本 GPT + Kimi
 // 远程 pricing.json 会覆盖这个数据；即使完全加载失败，应用也能显示基本费用
 const HARDCODED_PRICING_FALLBACK = Object.freeze({
@@ -81,7 +83,7 @@ const pricingRegistrySpec = {
   name: 'pricing',
   remotePath: 'src/config/pricing.json',
   cacheFileName: 'pricing.cache.json',
-  packaged: require('../../../src/config/pricing.json'),
+  packaged: loadPackagedJson('src/config/pricing.json'),
   hardcoded: HARDCODED_PRICING_FALLBACK,
   validate: validatePricing,
 }

@@ -25,13 +25,14 @@ import NetworkDiagnosticsPage from './pages/NetworkDiagnosticsPage'
 import SessionBrowserPage from './pages/SessionBrowserPage'
 import DocBrowserPage from './pages/DocBrowserPage'
 import CodexAccountPage from './pages/CodexAccountPage'
+import TerminalThemePage from './pages/TerminalThemePage'
 import Toast from './components/Toast'
 import { dataStore } from './store/data'
 import { setPricingOverride } from './store/costCalculator'
 
 const AUTO_INCREMENTAL_REFRESH_INTERVAL_MS = 5 * 60 * 1000
 const DEFAULT_ACTIVE_MODULE = 'permission'
-const VALID_ACTIVE_MODULES = new Set(['skills', 'mcp', 'usage', 'claude-usage', 'codex-accounts', 'api', 'project-init', 'permission', 'network', 'sessions', 'doc-browser'])
+const VALID_ACTIVE_MODULES = new Set(['skills', 'mcp', 'usage', 'claude-usage', 'codex-accounts', 'api', 'project-init', 'permission', 'network', 'sessions', 'doc-browser', 'terminal-theme'])
 const INITIAL_APP_UPDATE_STATE = Object.freeze({
   checked: false,
   checking: false,
@@ -322,6 +323,7 @@ export default function App() {
         {activeModule === 'network' && <NetworkDiagnosticsPage />}
         {activeModule === 'sessions' && <SessionBrowserPage />}
         {activeModule === 'doc-browser' && <DocBrowserPage />}
+        {activeModule === 'terminal-theme' && <TerminalThemePage />}
       </WorkbenchLayout>
 
       {/* Toast */}
