@@ -2,7 +2,7 @@
 
 > AI 编程工具负责写代码，CodePal 负责写代码之外的一切 —— Skills 调度、账户切换、额度监控、对话回顾、跨工具统一管理。专为 **Claude Code / Codex / Cursor / Trae** 用户打造。
 
-[![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-black?logo=apple)](https://github.com/yunshu0909/CodePal/releases) [![version](https://img.shields.io/badge/version-v1.5.2-blue)](https://github.com/yunshu0909/CodePal/releases/latest) [![license](https://img.shields.io/badge/license-ISC-green)](#license)
+[![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-black?logo=apple)](https://github.com/yunshu0909/CodePal/releases) [![version](https://img.shields.io/badge/version-v1.5.3-blue)](https://github.com/yunshu0909/CodePal/releases/latest) [![license](https://img.shields.io/badge/license-ISC-green)](#license)
 
 ---
 
@@ -211,14 +211,15 @@ skill-manager/
 
 完整版本信息见 [GitHub Releases](https://github.com/yunshu0909/CodePal/releases)。
 
-**最新版本：[v1.5.2](https://github.com/yunshu0909/CodePal/releases/tag/v1.5.2)**
+**最新版本：[v1.5.3](https://github.com/yunshu0909/CodePal/releases/tag/v1.5.3)**
 
-- ✅ 正式稳定版：替代 `v1.5.1` debug 预发布，重新作为可分发版本发布
-- 📦 补上 `src/config/*.json` 打包与安全兜底，避免安装包启动时报 `model-registry.json` 缺失
-- 🧹 下线「终端外观」模块，收回实验性功能入口
-- 🔁 对话回顾页补齐历史会话恢复链路，便于复现与排查
+- 🛡️ 修复远程配置防退化：旧 `pricing.cache.json` 不再覆盖新版安装包配置
+- 🔁 修复远程源 fallback：jsDelivr 返回旧版本时会继续尝试 GitHub Raw
+- 💰 补齐 GPT-5.5 定价命中链路，避免费用列因旧缓存继续显示 `--`
+- 🧪 新增 V1.5.3 专项自动化测试与 PRD/测试报告
 
 之前的里程碑版本：
+- **v1.5.2** — 稳定版发布 + 配置打包兜底 + 对话回顾恢复链路
 - **v1.5.0** — Codex 多账户切换 + 侧栏分组调整
 - **v1.4.5** — 对话回顾支持"启动历史对话"（复制 resume / 新终端启动）
 - **v1.4.1** — 满载率趋势（7d 周期峰值 + 最近 4 周）

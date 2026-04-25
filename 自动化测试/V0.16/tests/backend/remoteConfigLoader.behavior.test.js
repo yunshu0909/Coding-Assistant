@@ -2,8 +2,8 @@
  * 通用远程配置加载器行为测试
  *
  * 负责：
- * - 三层兜底优先级：cache > packaged > hardcoded
- * - 远程多源兜底：jsDelivr 失败应切 GitHub Raw
+ * - 三层兜底优先级：有效 cache > packaged > hardcoded
+ * - 远程多源兜底：jsDelivr 失败或版本退化时应切 GitHub Raw
  * - schema 校验：非法数据不应污染 cache
  * - 写入：saveCached 的原子性与目录自动创建
  *
@@ -99,7 +99,7 @@ describe('remoteConfigLoader', () => {
       const { loader, modelRegistry } = loadFresh()
       const cacheFile = path.join(tmpDir, 'cache.json')
       const fromCache = {
-        version: 'from-cache',
+        version: '2099-12-31',
         models: [{ id: 'opus', display: 'Opus', sublabel: '' }],
         effortLevels: [{ id: 'high', display: '高', desc: '' }],
       }
@@ -107,7 +107,7 @@ describe('remoteConfigLoader', () => {
 
       const result = await loader.loadEffective(modelRegistry.modelRegistrySpec, cacheFile)
       expect(result.source).toBe('cache')
-      expect(result.config.version).toBe('from-cache')
+      expect(result.config.version).toBe('2099-12-31')
     })
 
     it('cache 非法、packaged 非法时应回落到 hardcoded', async () => {
@@ -142,6 +142,7 @@ describe('remoteConfigLoader', () => {
       expect(loader.REMOTE_SOURCE_TEMPLATES.length).toBeGreaterThanOrEqual(2)
 
       const validConfig = {
+        version: '2099-12-31',
         models: [{ id: 'opus', sublabel: '' }],
         effortLevels: [{ id: 'high', display: '高', desc: '' }],
       }

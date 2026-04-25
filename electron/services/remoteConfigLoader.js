@@ -3,8 +3,8 @@
  *
  * 负责：
  * - 为所有"远程可更新"的 JSON 配置提供统一的加载 / 拉取 / 缓存机制
- * - 三层兜底：userData cache > 安装包打包版 > 硬编码 fallback
- * - 双源拉取：jsDelivr → GitHub Raw
+ * - 版本安全兜底：有效 cache > 安装包打包版 > 硬编码 fallback
+ * - 双源拉取：jsDelivr → GitHub Raw（旧版本源会被跳过）
  * - 后台刷新：启动后异步拉最新，写入 cache，下次启动生效
  *
  * 设计要点：
@@ -137,17 +137,28 @@ async function fetchFromUrl(url) {
 }
 
 /**
- * 从远程多源拉取：任意一源成功并通过校验即返回
+ * 从远程多源拉取：任意一源成功、通过校验且不比打包版旧即返回
  * @param {object} spec - registry spec
  * @returns {Promise<{success: boolean, config?: object, source?: string, error?: string}>}
  */
 async function fetchRemote(spec) {
+  let hasStaleSource = false
+
   for (const template of REMOTE_SOURCE_TEMPLATES) {
     const url = template(spec.remotePath)
     try {
       const data = await fetchFromUrl(url)
       const validated = validateOrWarn(spec, data, `remote from ${url}`)
       if (validated) {
+        const remoteVersion = validated?.version
+        const packagedVersion = spec.packaged?.version
+        if (isRemoteVersionStale(remoteVersion, packagedVersion)) {
+          hasStaleSource = true
+          console.warn(
+            `[${spec.name}] remote version stale from ${url} (remote=${remoteVersion}, packaged=${packagedVersion}), trying next source`
+          )
+          continue
+        }
         return { success: true, config: validated, source: url }
       }
       // schema 非法时继续下一源
@@ -155,20 +166,39 @@ async function fetchRemote(spec) {
       console.warn(`[${spec.name}] fetch failed from ${url}:`, error?.message || error)
     }
   }
+
+  if (hasStaleSource) {
+    return { success: false, error: 'REMOTE_VERSION_STALE' }
+  }
   return { success: false, error: 'ALL_REMOTE_SOURCES_FAILED' }
 }
 
 /**
- * 三层优先级加载：cache > packaged > hardcoded
+ * 三层优先级加载：有效 cache > packaged > hardcoded
  * @param {object} spec - registry spec
  * @param {string} cacheFilePath - 缓存文件绝对路径
  * @returns {Promise<{config: object, source: 'cache'|'packaged'|'hardcoded'}>}
  */
 async function loadEffective(spec, cacheFilePath) {
-  const cached = await loadCached(spec, cacheFilePath)
-  if (cached) return { config: cached, source: 'cache' }
-
   const packaged = loadPackaged(spec)
+  const cached = await loadCached(spec, cacheFilePath)
+
+  if (cached) {
+    const cacheVersion = cached?.version
+    const packagedVersion = packaged?.version
+    if (!isRemoteVersionStale(cacheVersion, packagedVersion)) {
+      return { config: cached, source: 'cache' }
+    }
+
+    console.warn(
+      `[${spec.name}] cached version stale (cache=${cacheVersion}, packaged=${packagedVersion}), using packaged`
+    )
+    if (packaged) {
+      // 自愈旧 cache：避免下次启动继续读到低版本配置
+      await saveCached(spec, cacheFilePath, packaged)
+    }
+  }
+
   if (packaged) return { config: packaged, source: 'packaged' }
 
   // 硬编码兜底必须通过自身 schema 校验（单测会守住这点）
