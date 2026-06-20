@@ -89,8 +89,11 @@ const CLAUDE_WORKFLOW_FINISHED_STATUSES = new Set([
   'canceled',
   'aborted',
 ])
-const CLAUDE_WORKFLOW_RECENT_MS = 24 * 60 * 60 * 1000
-const CLAUDE_WORKFLOW_MAX_FILES = 200
+// 心跳活跃窗口：run 目录内任一文件 5 分钟内有写入才算"正在跑"
+// （活跃 agent 的 .jsonl 会持续流式增长，崩溃/中断的僵尸 run 会很快超时掉出）
+const CLAUDE_WORKFLOW_LIVE_MS = 5 * 60 * 1000
+// 单次最多检查的 run 目录数（按目录新鲜度倒序后取头部，防历史目录全量读盘）
+const CLAUDE_WORKFLOW_MAX_RUNS = 60
 const K28_PYTHON_PACKAGES = [
   'bleak>=0.22,<1.2',
   'pyobjc-core<12',
@@ -552,17 +555,6 @@ async function tailFile(filePath, lineCount = 40) {
 }
 
 /**
- * 把秒级或毫秒级时间戳统一成毫秒
- * @param {unknown} value - 原始时间戳
- * @returns {number}
- */
-function normalizeTimestampMs(value) {
-  const num = Number(value)
-  if (!Number.isFinite(num) || num <= 0) return 0
-  return num > 1e12 ? num : num * 1000
-}
-
-/**
  * 从 Claude workflow 脚本文本里提取 meta 字段
  * @param {string} script - workflow 脚本文本
  * @param {string} field - meta 字段名
@@ -574,66 +566,131 @@ function extractWorkflowMetaValue(script, field) {
 }
 
 /**
- * 判断 Claude workflow 是否仍应作为活跃任务展示
- * @param {unknown} status - workflow 状态
- * @returns {boolean}
+ * 计算 run 目录的最近心跳：目录内任一文件的最大 mtime（毫秒）
+ * 活跃工作流的 agent .jsonl 会持续流式写入，故用 max(mtime) 判断"是否仍在动"
+ * @param {string} runDir - <session>/subagents/workflows/wf_<id> 目录
+ * @returns {Promise<number>} 毫秒时间戳，读取失败返回 0
  */
-function isActiveClaudeWorkflowStatus(status) {
-  const normalized = String(status || '').trim().toLowerCase()
-  return Boolean(normalized) && !CLAUDE_WORKFLOW_FINISHED_STATUSES.has(normalized)
+async function readWorkflowRunHeartbeatMs(runDir) {
+  let entries = []
+  try {
+    entries = await fs.readdir(runDir, { withFileTypes: true })
+  } catch {
+    return 0
+  }
+  let latestMs = 0
+  for (const entry of entries) {
+    if (!entry.isFile()) continue
+    try {
+      const stat = await fs.stat(path.join(runDir, entry.name))
+      if (stat.mtimeMs > latestMs) latestMs = stat.mtimeMs
+    } catch {}
+  }
+  return latestMs
 }
 
 /**
- * 生成 Claude workflow 的 agent 进度文案
- * @param {object} workflow - Claude workflow JSON
- * @returns {string}
+ * 判断 run 是否已结束
+ * Claude Code 仅在工作流跑完时才把完成快照写到 <session>/workflows/<runId>.json，
+ * 故快照出现即视为结束；仅当快照显式带「非终态」status 时才例外（防御未来格式变化）。
+ * @param {string} sessionDir - 会话目录
+ * @param {string} runId - 工作流 runId（wf_*）
+ * @returns {Promise<boolean>}
  */
-function buildClaudeWorkflowProgressText(workflow) {
-  const progressItems = Array.isArray(workflow.workflowProgress) ? workflow.workflowProgress : []
-  const agents = progressItems.filter((item) => item?.type === 'workflow_agent')
-  const explicitTotal = Number(workflow.agentCount)
-  const total = Number.isFinite(explicitTotal) && explicitTotal > 0 ? explicitTotal : agents.length
-  if (!total) return ''
-
-  const doneCount = agents.filter((item) => {
-    const status = String(item?.status || item?.state || '').trim().toLowerCase()
-    return status === 'done' || status === 'completed' || status === 'complete' || status === 'success'
-  }).length
-
-  return `${doneCount}/${total} agents done`
+async function isClaudeWorkflowFinished(sessionDir, runId) {
+  const snapshotPath = path.join(sessionDir, 'workflows', `${runId}.json`)
+  let raw
+  try {
+    raw = await fs.readFile(snapshotPath, 'utf-8')
+  } catch {
+    return false
+  }
+  try {
+    const status = String(JSON.parse(raw)?.status || '').trim().toLowerCase()
+    if (status && !CLAUDE_WORKFLOW_FINISHED_STATUSES.has(status)) return false
+  } catch {}
+  return true
 }
 
 /**
- * 把 Claude workflow JSON 映射成 K28 活跃状态行
- * @param {object} workflow - Claude workflow JSON
- * @param {{filePath: string, mtimeMs: number}} context - 文件上下文
- * @returns {object|null}
+ * 读取 run 对应工作流脚本的 meta（name / description）
+ * 脚本落在 <session>/workflows/scripts/<slug>-<runId>.js
+ * @param {string} sessionDir - 会话目录
+ * @param {string} runId - 工作流 runId
+ * @returns {Promise<{name: string, description: string}>}
  */
-function toClaudeWorkflowState(workflow, context) {
-  if (!workflow || typeof workflow !== 'object') return null
-  if (!isActiveClaudeWorkflowStatus(workflow.status)) return null
+async function readClaudeWorkflowScriptMeta(sessionDir, runId) {
+  const scriptsDir = path.join(sessionDir, 'workflows', 'scripts')
+  let entries = []
+  try {
+    entries = await fs.readdir(scriptsDir)
+  } catch {
+    return { name: '', description: '' }
+  }
+  const scriptName = entries.find((name) => name.endsWith(`${runId}.js`))
+    || entries.find((name) => name.includes(runId))
+  if (!scriptName) return { name: '', description: '' }
+  try {
+    const script = await fs.readFile(path.join(scriptsDir, scriptName), 'utf-8')
+    return {
+      name: extractWorkflowMetaValue(script, 'name'),
+      description: extractWorkflowMetaValue(script, 'description'),
+    }
+  } catch {
+    return { name: '', description: '' }
+  }
+}
 
-  const metaName = extractWorkflowMetaValue(workflow.script, 'name')
-  const metaDescription = extractWorkflowMetaValue(workflow.script, 'description')
-  const name = String(workflow.workflowName || workflow.name || metaName || workflow.runId || 'Claude workflow').trim()
-  const description = String(
-    workflow.summary
-      || workflow.description
-      || metaDescription
-      || 'Claude dynamic workflow'
-  ).trim()
-  const progress = buildClaudeWorkflowProgressText(workflow)
-  const updatedMs = Math.max(
-    normalizeTimestampMs(workflow.updatedAt),
-    normalizeTimestampMs(workflow.endTime),
-    normalizeTimestampMs(workflow.startTime),
-    context.mtimeMs || 0
-  )
+/**
+ * 从 journal.jsonl 统计 agent 进度文案
+ * 事件 started=已派发、result=已完成，按 agentId 去重；
+ * 分母取「已派发数」（运行中无法预知最终总量，宁可如实反映已观测到的）
+ * @param {string} runDir - run 目录
+ * @returns {Promise<string>} 形如 "3/5 agents done"，无数据返回 ''
+ */
+async function readClaudeWorkflowProgressText(runDir) {
+  let raw
+  try {
+    raw = await fs.readFile(path.join(runDir, 'journal.jsonl'), 'utf-8')
+  } catch {
+    return ''
+  }
+  const started = new Set()
+  const done = new Set()
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    let event
+    try {
+      event = JSON.parse(trimmed)
+    } catch {
+      continue
+    }
+    const agentId = event?.agentId || event?.key
+    if (!agentId) continue
+    if (event.type === 'started') started.add(agentId)
+    else if (event.type === 'result') done.add(agentId)
+  }
+  if (!started.size) return ''
+  return `${done.size}/${started.size} agents done`
+}
 
+/**
+ * 把一个正在跑的工作流 run 映射成 K28 活跃状态行
+ * @param {object} run - run 描述
+ * @param {string} run.runId - 工作流 runId
+ * @param {number} run.heartbeatMs - 最近心跳毫秒时间戳
+ * @param {{name: string, description: string}} run.meta - 脚本 meta
+ * @param {string} run.progress - 进度文案
+ * @returns {object}
+ */
+function toClaudeWorkflowState({ runId, heartbeatMs, meta, progress }) {
+  const name = String(meta?.name || runId || 'Claude workflow').trim()
+  const description = String(meta?.description || 'Claude dynamic workflow').trim()
   return {
-    key: `claude-workflow:${workflow.runId || context.filePath}`,
+    key: `claude-workflow:${runId}`,
     state: 'busy',
-    epoch: Math.floor(updatedMs / 1000),
+    epoch: Math.floor((heartbeatMs || 0) / 1000),
     name,
     task: progress ? `${description} · ${progress}` : description,
     source: 'Claude',
@@ -641,17 +698,18 @@ function toClaudeWorkflowState(workflow, context) {
 }
 
 /**
- * 收集 Claude Code dynamic workflow JSON 文件
+ * 收集 Claude Code dynamic workflow 的运行目录
+ * 运行态实时落在 <session>/subagents/workflows/wf_<id>/，完成后才有 <session>/workflows/wf_<id>.json
  * @param {string} projectsDir - ~/.claude/projects 目录
- * @returns {Promise<string[]>}
+ * @returns {Promise<Array<{runId: string, runDir: string, sessionDir: string}>>}
  */
-async function collectClaudeWorkflowFiles(projectsDir) {
-  const files = []
+async function collectClaudeWorkflowRuns(projectsDir) {
+  const runs = []
   let projectEntries = []
   try {
     projectEntries = await fs.readdir(projectsDir, { withFileTypes: true })
   } catch {
-    return files
+    return runs
   }
 
   for (const projectEntry of projectEntries) {
@@ -666,57 +724,66 @@ async function collectClaudeWorkflowFiles(projectsDir) {
 
     for (const sessionEntry of sessionEntries) {
       if (!sessionEntry.isDirectory()) continue
-      const workflowsDir = path.join(projectDir, sessionEntry.name, 'workflows')
-      let workflowEntries = []
+      const sessionDir = path.join(projectDir, sessionEntry.name)
+      const runsDir = path.join(sessionDir, 'subagents', 'workflows')
+      let runEntries = []
       try {
-        workflowEntries = await fs.readdir(workflowsDir, { withFileTypes: true })
+        runEntries = await fs.readdir(runsDir, { withFileTypes: true })
       } catch {
         continue
       }
-      for (const workflowEntry of workflowEntries) {
-        if (workflowEntry.isFile() && workflowEntry.name.endsWith('.json')) {
-          files.push(path.join(workflowsDir, workflowEntry.name))
+      for (const runEntry of runEntries) {
+        if (runEntry.isDirectory() && runEntry.name.startsWith('wf_')) {
+          runs.push({
+            runId: runEntry.name,
+            runDir: path.join(runsDir, runEntry.name),
+            sessionDir,
+          })
         }
       }
     }
   }
 
-  return files
+  return runs
 }
 
 /**
- * 读取 Claude Code dynamic workflow 的活跃状态
+ * 读取 Claude Code dynamic workflow 的活跃（进行中）状态
+ * 判活两道独立信号：① 无完成快照；② run 目录心跳在 liveMs 内（防崩溃后的僵尸 run）
  * @param {object} options - 读取选项
  * @param {string} [options.projectsDir] - Claude projects 目录
  * @param {number} [options.nowMs] - 当前毫秒时间戳
- * @param {number} [options.maxAgeMs] - 最大扫描年龄
+ * @param {number} [options.liveMs] - 心跳活跃窗口
  * @returns {Promise<Array<{key: string, state: string, epoch: number, name: string, task: string, source: string}>>}
  */
 async function readClaudeWorkflowStates({
   projectsDir = CLAUDE_PROJECTS_DIR,
   nowMs = Date.now(),
-  maxAgeMs = CLAUDE_WORKFLOW_RECENT_MS,
+  liveMs = CLAUDE_WORKFLOW_LIVE_MS,
 } = {}) {
-  const workflowFiles = await collectClaudeWorkflowFiles(projectsDir)
-  const candidates = []
+  const runs = await collectClaudeWorkflowRuns(projectsDir)
 
-  for (const filePath of workflowFiles) {
+  // 按 run 目录自身 mtime 粗排取头部，避免历史目录全量读盘
+  const ranked = []
+  for (const run of runs) {
+    let dirMtimeMs = 0
     try {
-      const stat = await fs.stat(filePath)
-      if (nowMs - stat.mtimeMs > maxAgeMs) continue
-      candidates.push({ filePath, mtimeMs: stat.mtimeMs })
+      dirMtimeMs = (await fs.stat(run.runDir)).mtimeMs
     } catch {}
+    ranked.push({ ...run, dirMtimeMs })
   }
-
-  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)
+  ranked.sort((a, b) => b.dirMtimeMs - a.dirMtimeMs)
 
   const states = []
-  for (const candidate of candidates.slice(0, CLAUDE_WORKFLOW_MAX_FILES)) {
-    try {
-      const workflow = JSON.parse(await fs.readFile(candidate.filePath, 'utf-8'))
-      const state = toClaudeWorkflowState(workflow, candidate)
-      if (state) states.push(state)
-    } catch {}
+  for (const run of ranked.slice(0, CLAUDE_WORKFLOW_MAX_RUNS)) {
+    // 完成快照出现即结束，不再算进行中
+    if (await isClaudeWorkflowFinished(run.sessionDir, run.runId)) continue
+    // 心跳超时 = 崩溃/中断的僵尸 run，不显示
+    const heartbeatMs = await readWorkflowRunHeartbeatMs(run.runDir)
+    if (!heartbeatMs || nowMs - heartbeatMs > liveMs) continue
+    const meta = await readClaudeWorkflowScriptMeta(run.sessionDir, run.runId)
+    const progress = await readClaudeWorkflowProgressText(run.runDir)
+    states.push(toClaudeWorkflowState({ runId: run.runId, heartbeatMs, meta, progress }))
   }
 
   return states

@@ -2,8 +2,14 @@
  * K28 状态灯服务回归测试
  *
  * 负责：
- * - 验证 Claude Code dynamic workflow 运行中时会进入活跃 session
- * - 验证已结束 workflow 不会被误算为活跃任务
+ * - 验证 Claude Code dynamic workflow 运行中时会进入活跃 session（按真实落盘结构）
+ * - 验证已出现完成快照的 workflow 不会被误算为活跃任务
+ * - 验证心跳超时的僵尸 run 不会一直挂在进行中
+ * - 验证缺脚本 meta 时回退到 runId
+ *
+ * 关键事实源（SSH 只读勘察确认）：运行态实时写在
+ * <session>/subagents/workflows/wf_<id>/（journal.jsonl + agent-*.jsonl 流式增长），
+ * 完成后才把快照写到 <session>/workflows/<id>.json 并盖 status:"completed"。
  *
  * @module tests/k28StatusLightService
  */
@@ -18,45 +24,65 @@ const require = createRequire(import.meta.url)
 const { _private } = require('../electron/services/k28StatusLightService')
 
 /**
- * 写入临时 Claude workflow JSON
+ * 按真实落盘结构写入一个 Claude workflow run
  * @param {string} projectsDir - 临时 ~/.claude/projects 目录
- * @param {object} workflow - workflow JSON
- * @returns {Promise<string>}
+ * @param {object} options - run 选项
+ * @param {string} options.runId - 工作流 runId（wf_*）
+ * @param {object} [options.meta] - 脚本 meta，写入 scripts/<slug>-<runId>.js
+ * @param {Array<object>} [options.journalEvents] - journal.jsonl 事件
+ * @param {object|null} [options.completed] - 非空则写完成快照 workflows/<runId>.json
+ * @returns {Promise<string>} runDir 路径
  */
-async function writeWorkflow(projectsDir, workflow) {
-  const workflowsDir = path.join(projectsDir, '-tmp-project', 'session-1', 'workflows')
-  await mkdir(workflowsDir, { recursive: true })
-  const filePath = path.join(workflowsDir, `${workflow.runId}.json`)
-  await writeFile(filePath, `${JSON.stringify(workflow)}\n`, 'utf-8')
-  return filePath
+async function writeWorkflowRun(projectsDir, { runId, meta, journalEvents = [], completed = null }) {
+  const sessionDir = path.join(projectsDir, '-tmp-project', 'session-1')
+  const runDir = path.join(sessionDir, 'subagents', 'workflows', runId)
+  await mkdir(runDir, { recursive: true })
+
+  const journal = journalEvents.map((event) => JSON.stringify(event)).join('\n')
+  await writeFile(path.join(runDir, 'journal.jsonl'), `${journal}\n`, 'utf-8')
+  // agent .jsonl 是运行态心跳的主要来源，补一个让结构更贴近真实
+  await writeFile(path.join(runDir, 'agent-aaa.jsonl'), '{"type":"system"}\n', 'utf-8')
+
+  if (meta) {
+    const scriptsDir = path.join(sessionDir, 'workflows', 'scripts')
+    await mkdir(scriptsDir, { recursive: true })
+    const script = `export const meta = {\n  name: '${meta.name}',\n  description: '${meta.description}',\n}\n`
+    await writeFile(path.join(scriptsDir, `${meta.name}-${runId}.js`), script, 'utf-8')
+  }
+
+  if (completed) {
+    const workflowsDir = path.join(sessionDir, 'workflows')
+    await mkdir(workflowsDir, { recursive: true })
+    await writeFile(path.join(workflowsDir, `${runId}.json`), `${JSON.stringify(completed)}\n`, 'utf-8')
+  }
+
+  return runDir
 }
 
 describe('k28StatusLightService', () => {
   it('includes running Claude dynamic workflows as active sessions', async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'codepal-k28-status-'))
     const projectsDir = path.join(tempDir, '.claude', 'projects')
-    const nowMs = Date.now()
 
-    await writeWorkflow(projectsDir, {
+    await writeWorkflowRun(projectsDir, {
       runId: 'wf_release_review',
-      workflowName: 'release-review-v193',
-      status: 'running',
-      summary: '校核 v1.9.3 两功能发版就绪',
-      startTime: nowMs - 10000,
-      agentCount: 5,
-      workflowProgress: [
-        { type: 'workflow_agent', status: 'done' },
-        { type: 'workflow_agent', status: 'done' },
-        { type: 'workflow_agent', status: 'done' },
-        { type: 'workflow_agent', status: 'done' },
-        { type: 'workflow_agent', status: 'running' },
+      meta: {
+        name: 'release-review-v193',
+        description: '校核 v1.9.3 两功能发版就绪',
+      },
+      // 3 个已派发、2 个已出结果 → 2/3 agents done
+      journalEvents: [
+        { type: 'started', agentId: 'a1' },
+        { type: 'started', agentId: 'a2' },
+        { type: 'started', agentId: 'a3' },
+        { type: 'result', agentId: 'a1' },
+        { type: 'result', agentId: 'a2' },
       ],
     })
 
     const states = await _private.readClaudeWorkflowStates({
       projectsDir,
-      nowMs,
-      maxAgeMs: 60000,
+      nowMs: Date.now(),
     })
 
     expect(states).toHaveLength(1)
@@ -67,50 +93,65 @@ describe('k28StatusLightService', () => {
       source: 'Claude',
     })
     expect(states[0].task).toContain('校核 v1.9.3 两功能发版就绪')
-    expect(states[0].task).toContain('4/5 agents done')
+    expect(states[0].task).toContain('2/3 agents done')
   })
 
-  it('ignores completed Claude dynamic workflows', async () => {
+  it('ignores workflows that already have a completion snapshot', async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'codepal-k28-status-'))
     const projectsDir = path.join(tempDir, '.claude', 'projects')
-    const nowMs = Date.now()
 
-    await writeWorkflow(projectsDir, {
+    await writeWorkflowRun(projectsDir, {
       runId: 'wf_completed',
-      workflowName: 'release-review-v193',
-      status: 'completed',
-      summary: '已经结束的 workflow',
-      startTime: nowMs - 30000,
-      durationMs: 10000,
-      agentCount: 1,
-      workflowProgress: [{ type: 'workflow_agent', status: 'done' }],
+      meta: { name: 'release-review-v193', description: '已经结束的 workflow' },
+      journalEvents: [
+        { type: 'started', agentId: 'a1' },
+        { type: 'result', agentId: 'a1' },
+      ],
+      // 完成快照一旦出现就算结束
+      completed: { runId: 'wf_completed', status: 'completed', agentCount: 1 },
     })
 
     const states = await _private.readClaudeWorkflowStates({
       projectsDir,
-      nowMs,
-      maxAgeMs: 60000,
+      nowMs: Date.now(),
     })
 
     expect(states).toEqual([])
   })
 
-  it('falls back to workflow script meta when name and summary are missing', () => {
+  it('drops zombie runs whose heartbeat has gone stale', async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'codepal-k28-status-'))
+    const projectsDir = path.join(tempDir, '.claude', 'projects')
+
+    await writeWorkflowRun(projectsDir, {
+      runId: 'wf_zombie',
+      meta: { name: 'crashed-workflow', description: '崩在半路的工作流' },
+      journalEvents: [{ type: 'started', agentId: 'a1' }],
+      // 无完成快照，但心跳早就停了
+    })
+
+    // 把"现在"推到 10 分钟后，超过默认 5 分钟心跳窗口
+    const states = await _private.readClaudeWorkflowStates({
+      projectsDir,
+      nowMs: Date.now() + 10 * 60 * 1000,
+    })
+
+    expect(states).toEqual([])
+  })
+
+  it('falls back to runId when script meta is missing', () => {
     const state = _private.toClaudeWorkflowState({
       runId: 'wf_meta',
-      status: 'queued',
-      script: "const meta = { name: 'queued-workflow', description: '等待执行的动态工作流' }",
-      startTime: 1780838272455,
-    }, {
-      filePath: '/tmp/wf_meta.json',
-      mtimeMs: 1780838272455,
+      heartbeatMs: 1780838272455,
+      meta: { name: '', description: '' },
+      progress: '',
     })
 
     expect(state).toMatchObject({
       key: 'claude-workflow:wf_meta',
       state: 'busy',
-      name: 'queued-workflow',
-      task: '等待执行的动态工作流',
+      name: 'wf_meta',
+      task: 'Claude dynamic workflow',
       source: 'Claude',
     })
   })
