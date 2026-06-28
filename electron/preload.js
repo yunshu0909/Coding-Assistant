@@ -228,8 +228,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   aggregateUsagePeriod: (params) => ipcRenderer.invoke('aggregate-usage-period', params),
 
-  // Skill 使用次数（近 N 天 Claude+Codex 调用统计）
+  // Skill 使用次数（近 N 天 Claude+Codex 调用统计，主数字为清洗后的可用样本数）
   aggregateSkillUsage: (params) => ipcRenderer.invoke('aggregate-skill-usage', params),
+
+  // Skill 运行样本（近 N 天清洗后的 usable run samples）
+  listSkillRunSamples: (params) => ipcRenderer.invoke('list-skill-run-samples', params),
 
   /**
    * 获取 Claude/Codex 日志最早日期（北京时间），用于「累计至今」动态起点

@@ -31,7 +31,7 @@ export default function SkillUsageColumnHeader({ sort, onToggleSort, helpOpen, o
       {helpOpen && (
         <div className="usage-help-pop">
           <strong>调用数说明</strong>
-          统计近 30 天，来自本机 Claude + Codex 日志（Codex 仅显式 <code>$技能名</code> 调用，隐式不计）。0 次 ≠ 一定没用过。
+          主数字是清洗后的可用运行样本数；raw event 只用于排查日志扫描。统计近 30 天，来自本机 Claude + Codex 日志。0 次 ≠ 一定没用过。
           {onlyClaude && <div className="usage-help-note">⚠️ 本次仅读到 Claude，Codex 日志未读到。</div>}
           {onlyCodex && <div className="usage-help-note">⚠️ 本次仅读到 Codex，Claude 日志未读到。</div>}
         </div>

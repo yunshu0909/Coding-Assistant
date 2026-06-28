@@ -18,6 +18,7 @@ import Toast from '../components/Toast'
 import PageShell from '../components/PageShell'
 import SearchInput from '../components/SearchInput/SearchInput'
 import Button from '../components/Button/Button'
+import BatchActionBar from '../components/BatchActionBar/BatchActionBar'
 import StateView from '../components/StateView/StateView'
 import TagFilterChips from '../components/TagFilterChips/TagFilterChips'
 import TagSelector from '../components/TagSelector/TagSelector'
@@ -26,6 +27,7 @@ import useTagManagement from '../hooks/useTagManagement'
 import useSkillUsage from '../hooks/useSkillUsage'
 import SkillUsageBadge from '../components/skillUsage/SkillUsageBadge'
 import SkillUsageColumnHeader from '../components/skillUsage/SkillUsageColumnHeader'
+import SkillRunSamplesModal from '../components/skillUsage/SkillRunSamplesModal'
 
 // 勾选图标
 const checkSvg = (
@@ -33,31 +35,6 @@ const checkSvg = (
     <path d="M2.5 6L5 8.5L9.5 3.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 )
-
-/**
- * 批量操作栏组件
- * @param {Object} props - 组件属性
- * @param {number} props.selectedCount - 选中的技能数量
- * @param {Function} props.onPush - 批量推送回调
- * @param {Function} props.onDeactivate - 批量停用回调
- * @param {boolean} props.isVisible - 是否显示
- * @returns {JSX.Element|null} 批量操作栏
- */
-function BatchActionBar({ selectedCount, onPush, onDeactivate, isVisible }) {
-  if (!isVisible) return null
-
-  return (
-    <div className="batch-bar">
-      <span className="batch-info">
-        已选 <strong className="batch-count">{selectedCount}</strong> 个 skill
-      </span>
-      <div className="batch-actions">
-        <Button variant="secondary" size="sm" onClick={onDeactivate}>停用</Button>
-        <Button variant="primary" size="sm" onClick={onPush}>推送</Button>
-      </div>
-    </div>
-  )
-}
 
 /**
  * 合并技能列表并保持已有项顺序稳定
@@ -133,6 +110,7 @@ export default function ManagePage({ onReimport, onNavigateToConfig, refreshSign
   // 「调用」列排序（默认降序）+ 说明浮层开关
   const [usageSort, setUsageSort] = useState('desc')
   const [usageHelpOpen, setUsageHelpOpen] = useState(false)
+  const [usageSampleSkill, setUsageSampleSkill] = useState(null)
 
   /**
    * 加载技能数据和推送目标配置
@@ -233,6 +211,11 @@ export default function ManagePage({ onReimport, onNavigateToConfig, refreshSign
     const countOf = (s) => usageMap.get(s.name)?.total || 0
     return [...filteredSkills].sort((a, b) => (countOf(a) - countOf(b)) * dir)
   }, [filteredSkills, usageSort, usageMap])
+
+  const openUsageSamples = useCallback((skill, event) => {
+    event.stopPropagation()
+    setUsageSampleSkill(skill)
+  }, [])
 
   /**
    * 计算全选复选框的状态
@@ -589,6 +572,8 @@ export default function ManagePage({ onReimport, onNavigateToConfig, refreshSign
                       usage={usageMap.get(skill.name)}
                       loading={usageStatus === 'loading'}
                       error={usageStatus === 'error'}
+                      onClick={(event) => openUsageSamples(skill, event)}
+                      title="查看清洗后的运行样本"
                     />
                   </div>
                   <div className="skill-tag-column" onClick={(e) => e.stopPropagation()}>
@@ -633,6 +618,12 @@ export default function ManagePage({ onReimport, onNavigateToConfig, refreshSign
         onRenameTag={handleRenameTag}
         onDeleteTag={handleDeleteTag}
         onRemoveSkillFromTag={handleRemoveTag}
+      />
+
+      <SkillRunSamplesModal
+        open={Boolean(usageSampleSkill)}
+        onClose={() => setUsageSampleSkill(null)}
+        skill={usageSampleSkill}
       />
 
       {/* Toast */}

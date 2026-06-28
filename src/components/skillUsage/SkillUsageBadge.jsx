@@ -15,12 +15,23 @@ import './skillUsage.css'
  * @param {{total:number}|undefined} props.usage - 该 skill 的统计（无记录则 undefined）
  * @param {boolean} [props.loading] - 扫描进行中
  * @param {boolean} [props.error] - 扫描失败
+ * @param {Function} [props.onClick] - 点击查看运行样本
+ * @param {string} [props.title] - 鼠标悬浮说明
  */
-export default function SkillUsageBadge({ usage, loading = false, error = false }) {
+export default function SkillUsageBadge({ usage, loading = false, error = false, onClick, title }) {
+  const wrap = (node) => {
+    if (!onClick || loading || error) return node
+    return (
+      <button type="button" className="usage-badge-button" onClick={onClick} title={title || '查看运行样本'}>
+        {node}
+      </button>
+    )
+  }
+
   if (loading) return <span className="usage-skel" aria-label="加载中" />
   if (error) return <span className="usage-dash" title="调用数据读取失败，本次显示为 —">—</span>
 
   const total = usage?.total || 0
-  if (total === 0) return <Tag variant="default">0 次</Tag>
-  return <Tag variant="info">{total >= 1000 ? '999+' : total} 次</Tag>
+  if (total === 0) return wrap(<Tag variant="default">0 次</Tag>)
+  return wrap(<Tag variant="info">{total >= 1000 ? '999+' : total} 次</Tag>)
 }

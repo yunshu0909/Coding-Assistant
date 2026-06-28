@@ -1,10 +1,10 @@
 /**
- * useSkillUsage — 拉取每个 skill 近 N 天调用次数（Claude + Codex 合计）
+ * useSkillUsage — 拉取每个 skill 近 N 天使用统计（Claude + Codex 合计）
  *
  * 负责：
  * - 调 IPC `aggregate-skill-usage`（后端扫日志，异步，不阻塞列表渲染）
  * - 模块级缓存 5 分钟：切走切回不重复全扫
- * - 返回 { status, usageMap(name→{total,claude,codex,lastUsedAt}), sources }
+ * - 返回 { status, usageMap(name→{total,usableSamples,rawEvents,logicalRecords,claude,codex,lastUsedAt}), sources }
  *
  * @module hooks/useSkillUsage
  */
