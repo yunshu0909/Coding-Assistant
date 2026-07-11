@@ -31,6 +31,10 @@ const HARDCODED_PRICING_FALLBACK = Object.freeze({
     'claude-sonnet-4-6': { displayName: 'Claude Sonnet 4.6', input: 3.0, output: 15.0, cacheRead: 0.3, cacheWrite: 3.75 },
     'claude-haiku-4-5': { displayName: 'Claude Haiku 4.5', input: 1.0, output: 5.0, cacheRead: 0.1, cacheWrite: 1.25 },
     'claude-haiku-4-5-20251001': { displayName: 'Claude Haiku 4.5', input: 1.0, output: 5.0, cacheRead: 0.1, cacheWrite: 1.25 },
+    'gpt-5-6': { displayName: 'GPT-5.6 Sol', input: 5.0, output: 30.0, cacheRead: 0.5, cacheWrite: 6.25 },
+    'gpt-5-6-sol': { displayName: 'GPT-5.6 Sol', input: 5.0, output: 30.0, cacheRead: 0.5, cacheWrite: 6.25 },
+    'gpt-5-6-terra': { displayName: 'GPT-5.6 Terra', input: 2.5, output: 15.0, cacheRead: 0.25, cacheWrite: 3.125 },
+    'gpt-5-6-luna': { displayName: 'GPT-5.6 Luna', input: 1.0, output: 6.0, cacheRead: 0.1, cacheWrite: 1.25 },
   },
 })
 

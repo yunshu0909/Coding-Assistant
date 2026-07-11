@@ -155,7 +155,8 @@ describe('V1.5.3 remote-config 防退化', () => {
 
 describe('V1.5.3 GPT-5.5 定价命中', () => {
   it('pricing.json 应包含 GPT-5.5 标准短上下文价格', () => {
-    expect(pricingData.version).toBe('2026-04-25')
+    // 这是 V1.5.3 的最低版本门槛；后续新增模型价格时版本应继续向前推进。
+    expect(pricingData.version >= '2026-04-25').toBe(true)
     expect(pricingData.models['gpt-5-5']).toEqual({
       displayName: 'GPT-5.5',
       input: 5,
