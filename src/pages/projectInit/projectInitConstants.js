@@ -57,6 +57,14 @@ export const TEMPLATE_OPTIONS = [
     desc: '生成通用忽略规则（node_modules / dist / .env 等），避免误纳入版本',
     isGuideFile: false,
   },
+  {
+    key: 'issues',
+    label: '开发范式配套',
+    desc: '生成 ISSUES.md（issue 池 = 需求唯一入口）+ docs/README.md（沉淀规则）。配合指引文件里的开发流程闭环使用',
+    isGuideFile: false,
+    // 一个勾选项联动两个后端模板 key（勾选时 payload 同时带上 extraKeys）
+    extraKeys: ['docsReadme'],
+  },
 ]
 
 /** 默认全部勾选 */
@@ -66,6 +74,7 @@ export const DEFAULT_TEMPLATE_SELECTION = Object.freeze({
   memory: true,
   specs: true,
   gitignore: true,
+  issues: true,
 })
 
 export const GIT_MODES = [
@@ -86,9 +95,11 @@ export const TREE_NODES = [
   { key: 'claude', name: 'CLAUDE.md', kind: 'file', indent: 1, annotation: 'Claude Code 指引', testId: 'project-tree-claude', visibleWhen: (s) => s.templateSelection.claude },
   { key: 'memory-file', name: 'MEMORY.md', kind: 'file', indent: 1, annotation: '长期记忆', testId: 'project-tree-memory', visibleWhen: (s) => s.templateSelection.memory },
   { key: 'memory-dir', name: 'memory/', kind: 'dir', indent: 1, annotation: '每日记忆', testId: 'project-tree-memory-dir', visibleWhen: (s) => s.templateSelection.memory },
+  { key: 'issues', name: 'ISSUES.md', kind: 'file', indent: 1, annotation: 'Issue 池', testId: 'project-tree-issues', visibleWhen: (s) => s.templateSelection.issues },
   { key: 'specs', name: 'specs/', kind: 'dir', indent: 1, annotation: '工作单元', testId: 'project-tree-specs', visibleWhen: (s) => s.templateSelection.specs },
   { key: 'specs-example', name: '_example-示例功能/', kind: 'dir', indent: 2, annotation: '示例单元', testId: 'project-tree-specs-example', visibleWhen: (s) => s.templateSelection.specs },
-  { key: 'docs', name: 'docs/', kind: 'dir', indent: 1, annotation: '调研 / 决策记录' },
+  { key: 'docs', name: 'docs/', kind: 'dir', indent: 1, annotation: '沉淀知识库' },
+  { key: 'docs-readme', name: 'README.md', kind: 'file', indent: 2, annotation: '沉淀规则', testId: 'project-tree-docs-readme', visibleWhen: (s) => s.templateSelection.issues },
   { key: 'code', name: 'code/', kind: 'dir', indent: 1, annotation: '项目代码' },
   { key: 'code-git', name: '.git/', kind: 'dir', indent: 2, success: true, annotation: '版本控制', visibleWhen: (s) => s.gitMode === 'code' },
 ]

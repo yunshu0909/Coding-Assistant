@@ -691,7 +691,7 @@ registerProjectInitHandlers({
   ipcMain,
   expandHome,
   pathExists,
-  templateBaseDir: path.resolve(__dirname, '..', 'templates', 'project-init-v2'),
+  templateBaseDir: path.resolve(__dirname, '..', 'templates', 'project-init-v3'),
 })
 
 registerUsageAggregationHandlers({

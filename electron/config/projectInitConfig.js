@@ -51,6 +51,20 @@ const TEMPLATE_DEFINITIONS = Object.freeze({
     sourceFile: 'gitignore.tpl',
     targetSegments: ['.gitignore'],
   },
+  // V1.9.7 开发范式配套：issue 池（需求唯一入口）
+  issues: {
+    key: 'issues',
+    type: 'file',
+    sourceFile: 'ISSUES.md',
+    targetSegments: ['ISSUES.md'],
+  },
+  // V1.9.7 开发范式配套：docs/ 沉淀规则说明（源名 docs-readme.md，落进 docs/ 目录）
+  docsReadme: {
+    key: 'docsReadme',
+    type: 'file',
+    sourceFile: 'docs-readme.md',
+    targetSegments: ['docs', 'README.md'],
+  },
 })
 
 /**
@@ -60,7 +74,7 @@ const TEMPLATE_DEFINITIONS = Object.freeze({
 const MEMORY_PROTOCOL_SOURCE_FILE = 'memory-protocol.md'
 
 const TEMPLATE_KEYS = Object.freeze(Object.keys(TEMPLATE_DEFINITIONS))
-const DEFAULT_TEMPLATE_KEYS = Object.freeze(['agents', 'claude', 'memory', 'specs', 'gitignore'])
+const DEFAULT_TEMPLATE_KEYS = Object.freeze(['agents', 'claude', 'memory', 'specs', 'gitignore', 'issues', 'docsReadme'])
 
 /**
  * V1.2.5 旧版 Git 模式字符串枚举（保留：现有 service/handler/UI 仍在使用）

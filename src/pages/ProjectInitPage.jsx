@@ -74,9 +74,9 @@ export default function ProjectInitPage() {
   // 是否有指引文件被勾选（记忆系统的依赖条件）
   const hasGuideFile = templateSelection.agents || templateSelection.claude
 
-  // 当前勾选的模板 key 列表
+  // 当前勾选的模板 key 列表（extraKeys：一个勾选项联动多个后端模板 key，如「开发范式配套」）
   const selectedTemplates = useMemo(
-    () => TEMPLATE_OPTIONS.filter((item) => templateSelection[item.key]).map((item) => item.key),
+    () => TEMPLATE_OPTIONS.filter((item) => templateSelection[item.key]).flatMap((item) => [item.key, ...(item.extraKeys || [])]),
     [templateSelection]
   )
 
