@@ -36,7 +36,7 @@ function WorkbenchLayout({ children, activeModule, onModuleChange, hasUpdate, on
     {
       label: '工具设置',
       items: [
-        // 'api' 模块 v1.5.0 起从侧栏隐藏：短期内不使用，代码和路由保留，未来需要时恢复此条即可
+        // 'api' 供应商切换模块已断接线隔离（v1.9.8），代码在 _disabled/api-config/，恢复步骤见其 README
         { id: 'permission', label: '启动模式', icon: '🛡️' },
         { id: 'project-init', label: '新建项目', icon: '🚀' },
         { id: 'network', label: '网络诊断', icon: '🌐' },

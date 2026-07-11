@@ -16,9 +16,10 @@
 const fs = require('fs/promises')
 const {
   backupClaudeSettingsRaw,
-  atomicWriteText,
   CLAUDE_SETTINGS_FILE_PATH,
 } = require('./permissionModeHandlers')
+// settings.json 写入统一走唯一 broker（V1.9.8 收口）
+const { writeClaudeSettingsFile } = require('../services/claudeSettingsService')
 
 // effortLevel 的基础格式校验：只允许小写字母/数字/短横线/下划线，长度 1-32
 // 不做值白名单 —— 新值（如 Claude 4.7 的 xhigh、未来可能的新档位）由 Claude Code 自己判定有效性
@@ -202,23 +203,11 @@ async function setModelConfig(field, value, pathExists) {
     // 设置字段值
     existingData[field] = value
 
-    // 备份原文件
-    let backupPath = null
-    if (exists && existingContent) {
-      const backupResult = await backupClaudeSettingsRaw(existingContent, 'model-config')
-      if (!backupResult.success) {
-        return {
-          success: false,
-          error: `备份失败: ${backupResult.error}`,
-          errorCode: backupResult.errorCode || 'BACKUP_FAILED',
-        }
-      }
-      backupPath = backupResult.backupPath
-    }
-
-    // 原子写入
-    const newContent = `${JSON.stringify(existingData, null, 2)}\n`
-    const writeResult = await atomicWriteText(CLAUDE_SETTINGS_FILE_PATH, newContent)
+    // 备份 + 原子写统一走 settings.json 唯一写入口（V1.9.8 收口，写侧串行防并发互覆）
+    const writeResult = await writeClaudeSettingsFile(existingData, {
+      backupSuffix: 'model-config',
+      previousContent: exists && existingContent ? existingContent : '',
+    })
 
     if (!writeResult.success) {
       const errorMap = {
@@ -227,14 +216,14 @@ async function setModelConfig(field, value, pathExists) {
       }
       return {
         success: false,
-        error: errorMap[writeResult.error] || `写入失败: ${writeResult.error}`,
-        errorCode: writeResult.error || 'WRITE_ERROR',
+        error: errorMap[writeResult.errorCode] || `写入失败: ${writeResult.error}`,
+        errorCode: writeResult.errorCode || 'WRITE_ERROR',
       }
     }
 
     return {
       success: true,
-      backupPath,
+      backupPath: writeResult.backupPath,
       error: null,
       errorCode: null,
     }

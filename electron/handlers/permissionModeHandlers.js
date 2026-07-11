@@ -19,6 +19,8 @@
 const fs = require('fs/promises')
 const path = require('path')
 const os = require('os')
+// settings.json 写入统一走唯一 broker（V1.9.8 收口）；本模块的 atomicWriteText/backup 导出仅供历史测试
+const { writeClaudeSettingsFile } = require('../services/claudeSettingsService')
 
 // 配置文件路径
 const CLAUDE_SETTINGS_FILE_PATH = path.join(os.homedir(), '.claude', 'settings.json')
@@ -293,42 +295,28 @@ async function setPermissionMode(mode, pathExists) {
     // 设置 defaultMode
     existingData.permissions.defaultMode = mode
 
-    // 如果有原文件内容，先备份
-    let backupPath = null
-    if (exists && existingContent) {
-      const backupResult = await backupClaudeSettingsRaw(existingContent, 'permission-mode')
-      if (!backupResult.success) {
-        return {
-          success: false,
-          error: `备份失败: ${backupResult.error}`,
-          errorCode: backupResult.errorCode || 'BACKUP_FAILED',
-        }
-      }
-      backupPath = backupResult.backupPath
-    }
-
-    // 原子写入新配置
-    const newContent = `${JSON.stringify(existingData, null, 2)}\n`
-    const writeResult = await atomicWriteText(CLAUDE_SETTINGS_FILE_PATH, newContent)
+    // 备份 + 原子写统一走 settings.json 唯一写入口（V1.9.8 收口，写侧串行防并发互覆）
+    const writeResult = await writeClaudeSettingsFile(existingData, {
+      backupSuffix: 'permission-mode',
+      previousContent: exists && existingContent ? existingContent : '',
+    })
 
     if (!writeResult.success) {
       const errorMap = {
         PERMISSION_DENIED: '权限被拒绝：无法写入 Claude settings.json',
         DISK_FULL: '磁盘空间不足，无法保存配置',
-        CREATE_DIR_FAILED: `创建目录失败: ${writeResult.error}`,
         WRITE_FAILED: `写入失败: ${writeResult.error}`,
-        RENAME_FAILED: `更新配置文件失败: ${writeResult.error}`,
       }
       return {
         success: false,
-        error: errorMap[writeResult.error] || `写入失败: ${writeResult.error}`,
-        errorCode: writeResult.error || 'WRITE_ERROR',
+        error: errorMap[writeResult.errorCode] || `写入失败: ${writeResult.error}`,
+        errorCode: writeResult.errorCode || 'WRITE_ERROR',
       }
     }
 
     return {
       success: true,
-      backupPath,
+      backupPath: writeResult.backupPath,
       error: null,
       errorCode: null,
     }

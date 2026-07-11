@@ -16,7 +16,8 @@ const path = require('path')
 const os = require('os')
 const { execFile } = require('child_process')
 const { promisify } = require('util')
-const { backupClaudeSettingsRaw, atomicWriteText } = require('../handlers/permissionModeHandlers')
+// 服务层不再反向依赖 handler 层：atomicWriteText 用于脚本/config/history 等非 settings 文件（settings 写走注入的 claudeSettingsService）
+const { atomicWriteText } = require('./envFileService')
 
 const execFileAsync = promisify(execFile)
 
@@ -411,25 +412,18 @@ function createClaudeUsageStatusService({ pathExists, claudeSettingsService }) {
       }
     }
 
-    if (settingsReadResult.exists && settingsReadResult.content) {
-      const backupResult = await backupClaudeSettingsRaw(settingsReadResult.content, 'codepal-usage-status')
-      if (!backupResult.success) {
-        return {
-          success: false,
-          integrationState: 'setup_failed',
-          error: backupResult.error || '备份 Claude settings 失败',
-          errorCode: backupResult.errorCode || 'BACKUP_FAILED',
-        }
-      }
-    }
-
-    const settingsWriteResult = await atomicWriteText(CLAUDE_SETTINGS_PATH, `${JSON.stringify(nextSettings, null, 2)}\n`)
+    // settings 写必须保持在脚本落盘 + chmod 之后（statusLine.command 指向的脚本先就位）
+    // 备份 + 原子写统一走 settings.json 唯一写入口（V1.9.8 收口）
+    const settingsWriteResult = await claudeSettingsService.writeClaudeSettingsFile(nextSettings, {
+      backupSuffix: 'codepal-usage-status',
+      previousContent: settingsReadResult.exists && settingsReadResult.content ? settingsReadResult.content : '',
+    })
     if (!settingsWriteResult.success) {
       return {
         success: false,
         integrationState: 'setup_failed',
         error: `写入 Claude settings 失败: ${settingsWriteResult.error}`,
-        errorCode: settingsWriteResult.error || 'WRITE_FAILED',
+        errorCode: settingsWriteResult.errorCode || 'WRITE_FAILED',
       }
     }
 

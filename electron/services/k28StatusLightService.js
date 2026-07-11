@@ -14,6 +14,8 @@ const path = require('path')
 const os = require('os')
 const { execFile } = require('child_process')
 const { getK28AudioState } = require('./k28AudioGuardService')
+// settings.json 写入统一走唯一 broker（V1.9.8 收口）；本模块局部 atomicWriteText 仅用于 Codex config / K28 conf
+const { writeClaudeSettingsFile } = require('./claudeSettingsService')
 
 const K28_DIR = path.join(os.homedir(), '.claude', 'k28-status-light')
 const K28_TEMPLATE_DIR = path.resolve(__dirname, '..', '..', 'templates', 'k28-status-light')
@@ -415,11 +417,15 @@ async function installClaudeHooks() {
   addHook('Stop', `bash ${path.join(K28_DIR, 'k28_status.sh')} done`)
   addHook('SessionEnd', `bash ${path.join(K28_DIR, 'k28_status.sh')} clear`)
 
-  if (rawContent) {
-    const backupPath = path.join(path.dirname(CLAUDE_SETTINGS_PATH), `settings-k28-${Date.now()}.json`)
-    await fs.writeFile(backupPath, rawContent, 'utf-8')
+  // 备份 + 原子写统一走 settings.json 唯一写入口（V1.9.8 收口）
+  // 有意变化：备份从 ~/.claude/settings-k28-<ts>.json 归位到统一的 ~/.claude/backups/
+  const writeResult = await writeClaudeSettingsFile(settings, {
+    backupSuffix: 'k28-hooks',
+    previousContent: rawContent,
+  })
+  if (!writeResult.success) {
+    throw new Error(writeResult.error || '写入 Claude settings.json 失败')
   }
-  await atomicWriteText(CLAUDE_SETTINGS_PATH, `${JSON.stringify(settings, null, 2)}\n`)
 }
 
 /**
@@ -1046,5 +1052,6 @@ module.exports = {
   _private: {
     readClaudeWorkflowStates,
     toClaudeWorkflowState,
+    installClaudeHooks,
   },
 }

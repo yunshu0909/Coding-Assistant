@@ -240,96 +240,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   getEarliestLogDate: () => ipcRenderer.invoke('get-earliest-log-date'),
 
-  // V0.7 API 配置 - 供应商切换
+  // V0.7 供应商切换 API 已断接线隔离（见 _disabled/api-config/），token 不再过渲染层
+
+  // V1.9.8 外链导航防护
 
   /**
-   * 获取当前 Claude 供应商配置
-   * @returns {Promise<{success: boolean, current: string, profile: Object|null, error: string|null}>}
-   * current: providerId | 'custom'
+   * 请求在系统浏览器打开外链（渲染层唯一合法外链出口，协议白名单校验在主进程）
+   * @param {string} url - 外链地址
+   * @returns {Promise<{success: boolean, errorCode: string|null, error: string|null}>}
    */
-  getClaudeProvider: () => ipcRenderer.invoke('get-claude-provider'),
-
-  /**
-   * 获取可用供应商列表（内置 + 自定义）
-   * 示例调用：
-   * const result = await window.electronAPI.listProviderDefinitions()
-   *
-   * 示例返回（成功）：
-   * {
-   *   success: true,
-   *   providers: [
-   *     {
-   *       id: 'official',
-   *       name: 'Claude Official',
-   *       url: 'https://www.anthropic.com/claude-code',
-   *       uiUrl: 'https://www.anthropic.com/claude-code',
-   *       baseUrl: '',
-   *       tokenEnvKey: null,
-   *       baseUrlEnvKey: null,
-   *       model: 'opus',
-   *       settingsEnv: {},
-   *       icon: 'A',
-   *       color: '#6b5ce7',
-   *       supportsToken: false,
-   *       source: 'builtin'
-   *     }
-   *   ],
-   *   registryPath: '/path/to/.provider-manifests.json',
-   *   error: null,
-   *   errorCode: null
-   * }
-   *
-   * @returns {Promise<{success: boolean, providers: Array<{id: string, name: string, url: string, uiUrl: string, baseUrl: string, tokenEnvKey: string|null, baseUrlEnvKey: string|null, model: string, settingsEnv: Record<string, string>, icon: string, color: string, supportsToken: boolean, source: string}>, registryPath: string, error: string|null, errorCode: string|null}>}
-   */
-  listProviderDefinitions: () => ipcRenderer.invoke('list-provider-definitions'),
-
-  /**
-   * 注册供应商 manifest（MCP 形状，本地入口）
-   * 示例调用：
-   * await window.electronAPI.registerProviderManifest({
-   *   id: 'neo-proxy',
-   *   name: 'NeoProxy Gateway',
-   *   baseUrl: 'https://api.neoproxy.dev/anthropic',
-   *   tokenEnvKey: 'NEO_PROXY_API_KEY',
-   *   model: 'opus',
-   *   settingsEnv: { ANTHROPIC_MODEL: 'neoproxy-opus' },
-   *   icon: 'N',
-   *   color: '#2563eb'
-   * })
-   *
-   * 示例返回（失败）：
-   * {
-   *   success: false,
-   *   provider: null,
-   *   error: 'settingsEnv key 不在白名单内: OPENAI_API_KEY',
-   *   errorCode: 'UNSAFE_SETTINGS_ENV_KEY'
-   * }
-   *
-   * @param {{id: string, name: string, baseUrl: string, tokenEnvKey: string, baseUrlEnvKey?: string, model?: string, settingsEnv?: Record<string, string>, icon?: string, color?: string, uiUrl?: string}} manifest - 渠道定义
-   * @returns {Promise<{success: boolean, provider: Object|null, registryPath: string, error: string|null, errorCode: string|null}>}
-   */
-  registerProviderManifest: (manifest) => ipcRenderer.invoke('register-provider-manifest', manifest),
-
-  /**
-   * 读取供应商 API Key 的环境变量配置
-   * @returns {Promise<{success: boolean, providers: Record<string, {token: string}>, envPath: string, error: string|null, errorCode: string|null}>}
-   */
-  getProviderEnvConfig: () => ipcRenderer.invoke('get-provider-env-config'),
-
-  /**
-   * 保存供应商 API Key 到 .env
-   * @param {string} providerKey - 供应商 key（动态 providerId）
-   * @param {string} token - API Key
-   * @returns {Promise<{success: boolean, envPath: string, error: string|null, errorCode: string|null}>}
-   */
-  saveProviderToken: (providerKey, token) => ipcRenderer.invoke('save-provider-token', providerKey, token),
-
-  /**
-   * 切换 Claude 供应商
-   * @param {string} profileKey - 目标档位（动态 providerId）
-   * @returns {Promise<{success: boolean, backupPath: string|null, error: string|null}>}
-   */
-  switchClaudeProvider: (profileKey) => ipcRenderer.invoke('switch-claude-provider', profileKey),
+  openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
 
   // V0.9 项目初始化 APIs
 

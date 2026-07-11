@@ -48,9 +48,12 @@ function loadClaudeUsageStatusModuleWithHome(tempHome) {
 
   const permissionModulePath = require.resolve('../../../../electron/handlers/permissionModeHandlers')
   const serviceModulePath = require.resolve('../../../../electron/services/claudeUsageStatusService')
+  // V1.9.8 起 settings 写走 claudeSettingsService（模块级路径常量），也要随 HOME 重载
+  const settingsServiceModulePath = require.resolve('../../../../electron/services/claudeSettingsService')
 
   delete require.cache[permissionModulePath]
   delete require.cache[serviceModulePath]
+  delete require.cache[settingsServiceModulePath]
 
   return require(serviceModulePath)
 }
@@ -58,10 +61,16 @@ function loadClaudeUsageStatusModuleWithHome(tempHome) {
 /**
  * 创建 Claude settings 读取服务桩
  * @param {string} settingsPath - settings.json 路径
- * @returns {{readClaudeSettingsFile: () => Promise<object>}}
+ * @returns {{readClaudeSettingsFile: () => Promise<object>, writeClaudeSettingsFile: (data: object, options?: object) => Promise<object>}}
  */
 function createClaudeSettingsService(settingsPath) {
   return {
+    // V1.9.8 起 settings 写走唯一 broker，桩按同契约落盘
+    async writeClaudeSettingsFile(settingsData) {
+      await fs.mkdir(path.dirname(settingsPath), { recursive: true })
+      await fs.writeFile(settingsPath, `${JSON.stringify(settingsData, null, 2)}\n`, 'utf-8')
+      return { success: true, backupPath: null, errorCode: null, error: null }
+    },
     async readClaudeSettingsFile() {
       try {
         const content = await fs.readFile(settingsPath, 'utf-8')

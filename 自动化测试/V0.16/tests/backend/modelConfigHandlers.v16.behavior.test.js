@@ -66,9 +66,12 @@ function loadModelConfigModuleWithHome(tempHome) {
 
   const permissionModulePath = require.resolve('../../../../electron/handlers/permissionModeHandlers')
   const modelConfigModulePath = require.resolve('../../../../electron/handlers/modelConfigHandlers')
+  // V1.9.8 起 settings 写走 claudeSettingsService（模块级路径常量），也要随 HOME 重载
+  const settingsServiceModulePath = require.resolve('../../../../electron/services/claudeSettingsService')
 
   delete require.cache[permissionModulePath]
   delete require.cache[modelConfigModulePath]
+  delete require.cache[settingsServiceModulePath]
 
   return require(modelConfigModulePath)
 }

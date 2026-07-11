@@ -47,7 +47,6 @@ const { registerImportPageHandlers } = require('./handlers/registerImportPageHan
 const { registerAppUpdateHandlers } = require('./handlers/registerAppUpdateHandlers')
 const { registerUsageAggregationHandlers } = require('./handlers/registerUsageAggregationHandlers')
 const { registerSkillUsageHandlers } = require('./handlers/registerSkillUsageHandlers')
-const { registerProviderHandlers } = require('./handlers/registerProviderHandlers')
 const { registerProjectInitHandlers } = require('./handlers/registerProjectInitHandlers')
 const { registerPermissionModeHandlers } = require('./handlers/permissionModeHandlers')
 const { registerModelConfigHandlers } = require('./handlers/modelConfigHandlers')
@@ -70,6 +69,7 @@ const { registerK28StatusLightHandlers } = require('./handlers/registerK28Status
 const { initDocBrowserStore } = require('./services/docBrowserService')
 const { startIpMonitor } = require('./services/networkDiagnosticsService')
 const { registerRepoWatcherHandlers } = require('./handlers/registerRepoWatcherHandlers')
+const { attachNavigationGuard, registerNavigationGuardHandlers } = require('./services/navigationGuardService')
 const { resolveProviderRegistryFilePath } = require('./services/providerRegistryPathService')
 const { ensureBuiltinProviderRegistryInstalled } = require('./services/builtinMcpInstallerService')
 
@@ -142,6 +142,12 @@ function createWindow() {
     },
     titleBarStyle: 'hiddenInset',
     vibrancy: 'under-window',
+  })
+
+  // 全局导航防护：窗口永不离开应用页面，安全外链转系统浏览器
+  attachNavigationGuard(mainWindow.webContents, {
+    shell,
+    devServerUrl: process.env.VITE_DEV_SERVER_URL,
   })
 
   // Load the app
@@ -710,14 +716,10 @@ registerSkillUsageHandlers({
 
 
 /**
- * 注册 Claude 供应商相关 IPC handlers
+ * 注册外链导航防护 IPC handler（open-external-link）
+ * 供应商配置 IPC 已断接线隔离（见 _disabled/api-config/），token 不再过渲染层
  */
-registerProviderHandlers({
-  ipcMain,
-  pathExists,
-  envFilePath: ENV_FILE_PATH,
-  providerRegistryFilePath: PROVIDER_REGISTRY_FILE_PATH,
-})
+registerNavigationGuardHandlers({ ipcMain, shell })
 
 /**
  * 注册权限模式（启动模式）相关 IPC handlers

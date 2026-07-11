@@ -8,7 +8,19 @@ permissions:
   contents: write
 
 jobs:
+  # V1.9.8 发版门禁：测试红则不构建不发布
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm test
+
   build:
+    needs: test
     strategy:
       fail-fast: false
       matrix:

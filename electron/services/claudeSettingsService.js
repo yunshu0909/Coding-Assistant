@@ -4,8 +4,12 @@
  * 负责：
  * - 读取并解析 ~/.claude/settings.json
  * - 备份 settings 文件
+ * - **settings.json 唯一写入口**（writeClaudeSettingsFile：串行队列 + 备份 + 原子写）
  * - 确保 apiKeyHelper 脚本存在
  * - 将供应商配置应用到 settings
+ *
+ * V1.9.8 起全应用对 settings.json 的写入必须走本模块的 writeClaudeSettingsFile，
+ * 禁止各模块自行 read-modify-write（防止并发互相覆盖 + 备份位置漂移）。
  *
  * @module electron/services/claudeSettingsService
  */
@@ -13,7 +17,7 @@
 const fs = require('fs/promises')
 const path = require('path')
 const os = require('os')
-const { normalizeEnvValue } = require('./envFileService')
+const { normalizeEnvValue, atomicWriteText } = require('./envFileService')
 
 /**
  * 判断是否为普通对象
@@ -32,6 +36,89 @@ function createBackupTimestamp() {
   return new Date().toISOString().replace(/[:.]/g, '-')
 }
 
+// 模块级路径常量：写入口和备份必须全应用唯一，不能随工厂多实例漂移
+const CLAUDE_SETTINGS_FILE_PATH = path.join(os.homedir(), '.claude', 'settings.json')
+const CLAUDE_SETTINGS_BACKUP_DIR = path.join(os.homedir(), '.claude', 'backups')
+
+/**
+ * 备份 Claude settings 原始内容（统一落 ~/.claude/backups/）
+ * @param {string} rawContent - 原始文件内容
+ * @param {string} suffix - 备份后缀
+ * @returns {Promise<{success: boolean, backupPath: string|null, errorCode: string|null, error: string|null}>}
+ */
+async function backupClaudeSettingsRaw(rawContent, suffix = 'snapshot') {
+  try {
+    await fs.mkdir(CLAUDE_SETTINGS_BACKUP_DIR, { recursive: true })
+    const backupPath = path.join(
+      CLAUDE_SETTINGS_BACKUP_DIR,
+      `settings-${suffix}-${createBackupTimestamp()}.json`
+    )
+    await fs.writeFile(backupPath, rawContent, 'utf-8')
+    return { success: true, backupPath, errorCode: null, error: null }
+  } catch (error) {
+    if (error.code === 'EACCES' || error.code === 'EPERM') {
+      return { success: false, backupPath: null, errorCode: 'PERMISSION_DENIED', error: '无法写入 Claude settings 备份，请检查权限' }
+    }
+    if (error.code === 'ENOSPC') {
+      return { success: false, backupPath: null, errorCode: 'DISK_FULL', error: '磁盘空间不足，无法写入 Claude settings 备份' }
+    }
+    return { success: false, backupPath: null, errorCode: 'WRITE_FAILED', error: `写入 Claude settings 备份失败: ${error.message}` }
+  }
+}
+
+// 模块级串行队列：工厂可能多实例（provider/usage-status 各建一个），队列必须模块级才真正串行
+let settingsWriteQueue = Promise.resolve()
+
+/**
+ * settings.json 唯一写入口：校验 → 排队 → 备份（可选）→ 原子写
+ *
+ * 步骤：
+ * 1. settingsData 必须是普通对象，否则 INVALID_SETTINGS_DATA
+ * 2. 进模块级串行队列（settings.json 全应用同一路径，写写互斥）
+ * 3. previousContent 非空时先备份，备份失败即中止不写
+ * 4. atomicWriteText 写入格式化 JSON（尾换行）
+ *
+ * @param {Record<string, any>} settingsData - 要写入的完整 settings 对象
+ * @param {Object} [options]
+ * @param {string} [options.backupSuffix] - 备份文件后缀（标记写入来源）
+ * @param {string} [options.previousContent] - 写前原始内容，非空则先备份
+ * @returns {Promise<{success: boolean, backupPath: string|null, errorCode: string|null, error: string|null}>}
+ */
+async function writeClaudeSettingsFile(settingsData, { backupSuffix = 'settings', previousContent = '' } = {}) {
+  if (!isPlainObject(settingsData)) {
+    return { success: false, backupPath: null, errorCode: 'INVALID_SETTINGS_DATA', error: 'settings 数据必须是普通对象' }
+  }
+
+  const run = async () => {
+    let backupPath = null
+    if (previousContent) {
+      const backupResult = await backupClaudeSettingsRaw(previousContent, backupSuffix)
+      if (!backupResult.success) {
+        return { success: false, backupPath: null, errorCode: backupResult.errorCode, error: backupResult.error }
+      }
+      backupPath = backupResult.backupPath
+    }
+    // 注意：atomicWriteText 失败通过返回值上报（{success:false, error:'CODE'}），不抛异常
+    const writeResult = await atomicWriteText(CLAUDE_SETTINGS_FILE_PATH, `${JSON.stringify(settingsData, null, 2)}\n`)
+    if (!writeResult.success) {
+      const code = writeResult.error || 'WRITE_FAILED'
+      if (code === 'PERMISSION_DENIED') {
+        return { success: false, backupPath, errorCode: 'PERMISSION_DENIED', error: '无法写入 Claude settings.json，请检查权限' }
+      }
+      if (code === 'DISK_FULL') {
+        return { success: false, backupPath, errorCode: 'DISK_FULL', error: '磁盘空间不足，无法写入 Claude settings.json' }
+      }
+      return { success: false, backupPath, errorCode: 'WRITE_FAILED', error: `写入 Claude settings.json 失败: ${code}` }
+    }
+    return { success: true, backupPath, errorCode: null, error: null }
+  }
+
+  // 前一个写失败也不阻塞后续（错误已通过各自返回值上抛）
+  const result = settingsWriteQueue.then(run, run)
+  settingsWriteQueue = result.then(() => {}, () => {})
+  return result
+}
+
 /**
  * 创建 Claude settings 服务实例
  * @param {Object} deps - 依赖注入
@@ -39,8 +126,6 @@ function createBackupTimestamp() {
  * @returns {Object} Claude settings 服务
  */
 function createClaudeSettingsService({ pathExists }) {
-  const CLAUDE_SETTINGS_FILE_PATH = path.join(os.homedir(), '.claude', 'settings.json')
-  const CLAUDE_SETTINGS_BACKUP_DIR = path.join(os.homedir(), '.claude', 'backups')
   const CLAUDE_API_KEY_HELPER_FILE_NAME = 'skill-manager-api-key-helper.sh'
   const CLAUDE_API_KEY_HELPER_PATH = path.join(path.dirname(CLAUDE_SETTINGS_FILE_PATH), CLAUDE_API_KEY_HELPER_FILE_NAME)
   const CLAUDE_API_KEY_HELPER_CONTENT = `#!/usr/bin/env bash
@@ -63,32 +148,6 @@ if (token) {
 }
 ' "$SETTINGS_FILE"
 `
-
-  /**
-   * 备份 Claude settings 原始内容
-   * @param {string} rawContent - 原始文件内容
-   * @param {string} suffix - 备份后缀
-   * @returns {Promise<{success: boolean, backupPath: string|null, errorCode: string|null, error: string|null}>}
-   */
-  async function backupClaudeSettingsRaw(rawContent, suffix = 'snapshot') {
-    try {
-      await fs.mkdir(CLAUDE_SETTINGS_BACKUP_DIR, { recursive: true })
-      const backupPath = path.join(
-        CLAUDE_SETTINGS_BACKUP_DIR,
-        `settings-${suffix}-${createBackupTimestamp()}.json`
-      )
-      await fs.writeFile(backupPath, rawContent, 'utf-8')
-      return { success: true, backupPath, errorCode: null, error: null }
-    } catch (error) {
-      if (error.code === 'EACCES' || error.code === 'EPERM') {
-        return { success: false, backupPath: null, errorCode: 'PERMISSION_DENIED', error: '无法写入 Claude settings 备份，请检查权限' }
-      }
-      if (error.code === 'ENOSPC') {
-        return { success: false, backupPath: null, errorCode: 'DISK_FULL', error: '磁盘空间不足，无法写入 Claude settings 备份' }
-      }
-      return { success: false, backupPath: null, errorCode: 'WRITE_FAILED', error: `写入 Claude settings 备份失败: ${error.message}` }
-    }
-  }
 
   /**
    * 确保 Claude apiKeyHelper 脚本存在
@@ -203,6 +262,7 @@ if (token) {
     settingsFilePath: CLAUDE_SETTINGS_FILE_PATH,
     apiKeyHelperPath: CLAUDE_API_KEY_HELPER_PATH,
     backupClaudeSettingsRaw,
+    writeClaudeSettingsFile,
     ensureClaudeApiKeyHelperScript,
     readClaudeSettingsFile,
     applyProviderProfileToSettings,
@@ -212,5 +272,7 @@ if (token) {
 
 module.exports = {
   isPlainObject,
+  backupClaudeSettingsRaw,
+  writeClaudeSettingsFile,
   createClaudeSettingsService,
 }

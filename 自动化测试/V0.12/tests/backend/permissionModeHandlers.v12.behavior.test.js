@@ -66,7 +66,10 @@ function loadPermissionModuleWithHome(tempHome) {
   process.env.USERPROFILE = tempHome
 
   const modulePath = require.resolve('../../../../electron/handlers/permissionModeHandlers')
+  // V1.9.8 起 settings 写走 claudeSettingsService（模块级路径常量），也要随 HOME 重载
+  const settingsServiceModulePath = require.resolve('../../../../electron/services/claudeSettingsService')
   delete require.cache[modulePath]
+  delete require.cache[settingsServiceModulePath]
   return require(modulePath)
 }
 

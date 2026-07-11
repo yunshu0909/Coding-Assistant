@@ -16,7 +16,6 @@ import React, { useState, useEffect } from 'react'
 import WorkbenchLayout from './components/WorkbenchLayout'
 import SkillManagerModule from './components/SkillManagerModule'
 import UsageMonitorModule from './components/UsageMonitorModule'
-import ApiConfigPage from './pages/ApiConfigPage'
 import ClaudeUsageStatusPage from './pages/ClaudeUsageStatusPage'
 import ProjectInitPage from './pages/ProjectInitPage'
 import PermissionModePage from './pages/PermissionModePage'
@@ -31,7 +30,7 @@ import { setPricingOverride } from './store/costCalculator'
 
 const AUTO_INCREMENTAL_REFRESH_INTERVAL_MS = 5 * 60 * 1000
 const DEFAULT_ACTIVE_MODULE = 'permission'
-const VALID_ACTIVE_MODULES = new Set(['skills', 'mcp', 'usage', 'claude-usage', 'api', 'project-init', 'permission', 'network', 'k28-status-light', 'sessions', 'doc-browser'])
+const VALID_ACTIVE_MODULES = new Set(['skills', 'mcp', 'usage', 'claude-usage', 'project-init', 'permission', 'network', 'k28-status-light', 'sessions', 'doc-browser'])
 const INITIAL_APP_UPDATE_STATE = Object.freeze({
   checked: false,
   checking: false,
@@ -45,7 +44,7 @@ const INITIAL_APP_UPDATE_STATE = Object.freeze({
 
 /**
  * 读取上次访问的模块，并过滤已下线模块
- * @returns {'skills'|'mcp'|'usage'|'claude-usage'|'api'|'project-init'|'permission'|'network'|'k28-status-light'|'sessions'|'doc-browser'}
+ * @returns {'skills'|'mcp'|'usage'|'claude-usage'|'project-init'|'permission'|'network'|'k28-status-light'|'sessions'|'doc-browser'}
  */
 function getInitialActiveModule() {
   const storedModule = localStorage.getItem('codepal-active-module')
@@ -315,7 +314,6 @@ export default function App() {
           </div>
         )}
         {activeModule === 'claude-usage' && <ClaudeUsageStatusPage />}
-        {activeModule === 'api' && <ApiConfigPage />}
         {activeModule === 'project-init' && <ProjectInitPage />}
         {activeModule === 'permission' && <PermissionModePage />}
         {activeModule === 'network' && <NetworkDiagnosticsPage />}
