@@ -180,6 +180,51 @@ async function readDailySummary(dateKey, deps = {}) {
 }
 
 /**
+ * 查找最早一份有实际用量的日汇总。
+ *
+ * 旧版本曾从 2020-01-01 预生成大量空汇总；这里只认当前 schema 且 total > 0 的文件，
+ * 避免首次打开「累计至今」时被空缓存拉长为数千天。同时，历史日志被删除后仍可从
+ * 已固化的有效汇总恢复累计起点，保持“发生过的用量不因会话删除而消失”的账本语义。
+ *
+ * @param {object} deps - 依赖注入
+ * @returns {Promise<string|null>} YYYY-MM-DD 或 null
+ */
+async function findEarliestDailySummaryDate(deps = {}) {
+  const homeDir = deps.homeDir || os.homedir()
+  const readdirFn = deps.readdirFn || fs.readdir
+  const readFileFn = deps.readFileFn || fs.readFile
+  const dirPath = path.join(homeDir, '.ai-workbench', 'daily-stats')
+
+  let fileNames
+  try {
+    fileNames = await readdirFn(dirPath)
+  } catch {
+    return null
+  }
+
+  const candidates = (fileNames || [])
+    .map((fileName) => /^([0-9]{4}-[0-9]{2}-[0-9]{2})\.json$/.exec(fileName))
+    .filter(Boolean)
+    .map((match) => match[1])
+    .filter(isValidDateKey)
+    .sort()
+
+  for (const dateKey of candidates) {
+    try {
+      const raw = await readFileFn(path.join(dirPath, `${dateKey}.json`), 'utf-8')
+      const normalized = normalizeDailySummary(JSON.parse(raw), dateKey)
+      if (normalized && normalized.summary.total > 0) {
+        return dateKey
+      }
+    } catch {
+      // 单个历史汇总损坏或并发删除时继续找下一天，不放大成累计加载失败。
+    }
+  }
+
+  return null
+}
+
+/**
  * 写入日汇总文件
  * @param {string} dateKey - YYYY-MM-DD
  * @param {object} summary - 日汇总对象
@@ -321,6 +366,7 @@ module.exports = {
   normalizeSummaryProjects,
   normalizeDailySummary,
   readDailySummary,
+  findEarliestDailySummaryDate,
   writeDailySummary,
   buildDailySummary,
   recomputeDailySummary,

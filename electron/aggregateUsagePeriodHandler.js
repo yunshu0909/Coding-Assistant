@@ -17,6 +17,7 @@ const {
   findEarliestLogDate,
 } = require('./services/usageLogScanService')
 const { buildUsageViewData } = require('./services/usageViewDataService')
+const { findEarliestDailySummaryDate } = require('./services/dailySummaryService')
 const {
   getBeijingDayKey,
   getPresetPeriodDateRange,
@@ -99,9 +100,21 @@ async function handleAggregateUsagePeriod(params, deps = {}) {
 
   try {
     const now = deps.nowFn ? deps.nowFn() : new Date()
-    const findEarliestFn = deps.findEarliestLogDateFn || findEarliestLogDate
-    // 仅 allTime 需要动态起点，week/month 走相对偏移没必要扫盘
-    const earliestDate = period === 'allTime' ? await findEarliestFn(deps) : null
+    const findEarliestLogFn = deps.findEarliestLogDateFn || findEarliestLogDate
+    const findEarliestSummaryFn = deps.findEarliestDailySummaryDateFn || findEarliestDailySummaryDate
+    // 累计起点取“现存日志”和“有效历史账本”中更早的一天：
+    // - 空缓存不会把新用户拉回 2020 年；
+    // - 删除旧会话也不会让已经固化的历史累计消失。
+    let earliestDate = null
+    if (period === 'allTime') {
+      const [logDate, summaryDate] = await Promise.all([
+        findEarliestLogFn(deps),
+        findEarliestSummaryFn(deps)
+      ])
+      earliestDate = logDate && summaryDate
+        ? (logDate < summaryDate ? logDate : summaryDate)
+        : (logDate || summaryDate)
+    }
     const { startDate, endDate } = getPresetPeriodDateRange(period, now, { earliestDate })
 
     return await aggregateUsageDateRange({

@@ -22,6 +22,7 @@ const require = createRequire(import.meta.url)
 const {
   findEarliestLogDate,
   findEarliestCodexDate,
+  findFirstCodexUsageTimestampInFile,
   findEarliestClaudeDate,
   findFirstClaudeTimestampInFile,
   toBeijingDateKey,
@@ -45,9 +46,61 @@ function makeFakeFs(tree) {
       }
       return entries.map((e) => e.name)
     }),
+    readFile: vi.fn(async (file) => {
+      const match = String(file).match(/\/([0-9]{4})\/([0-9]{2})\/([0-9]{2})\//)
+      const timestamp = match
+        ? `${match[1]}-${match[2]}-${match[3]}T08:00:00Z`
+        : '2025-01-01T08:00:00Z'
+      return JSON.stringify({
+        timestamp,
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: {
+              input_tokens: 10,
+              output_tokens: 5,
+              cached_input_tokens: 0,
+              total_tokens: 15,
+            },
+          },
+        },
+      }) + '\n'
+    }),
     stat: vi.fn(),
   }
 }
+
+describe('findFirstCodexUsageTimestampInFile', () => {
+  it('跳过空快照和普通事件，返回第一条正用量 token_count', async () => {
+    const readFileFn = vi.fn(async () => [
+      JSON.stringify({ type: 'session_meta', payload: {} }),
+      JSON.stringify({
+        timestamp: '2025-03-01T08:00:00Z',
+        type: 'event_msg',
+        payload: { type: 'token_count', info: { total_token_usage: { total_tokens: 0 } } },
+      }),
+      JSON.stringify({
+        timestamp: '2025-03-01T09:00:00Z',
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: { total_token_usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 } },
+        },
+      }),
+    ].join('\n'))
+
+    const result = await findFirstCodexUsageTimestampInFile('/fake/session.jsonl', { readFileFn })
+    expect(result.toISOString()).toBe('2025-03-01T09:00:00.000Z')
+  })
+
+  it('没有正用量 token_count 时返回 null', async () => {
+    const result = await findFirstCodexUsageTimestampInFile('/fake/session.jsonl', {
+      readFileFn: vi.fn(async () => 'noop\n'),
+    })
+    expect(result).toBeNull()
+  })
+})
 
 describe('findFirstClaudeTimestampInFile（真实流）', () => {
   const created = []
@@ -214,6 +267,33 @@ describe('findEarliestCodexDate', () => {
 
     const result = await findEarliestCodexDate(base, { fsPromises: fakeFs })
     expect(result).toBe('2024-01-02')
+  })
+
+  it('最早一天只有空 JSONL 残留 → 跳到下一天的真实用量', async () => {
+    const base = '/fake/codex/sessions'
+    const fakeFs = makeFakeFs({
+      [base]: [{ name: '2020', isDir: true }, { name: '2026', isDir: true }],
+      [`${base}/2020`]: [{ name: '01', isDir: true }],
+      [`${base}/2020/01`]: [{ name: '01', isDir: true }],
+      [`${base}/2020/01/01`]: [{ name: 'empty.jsonl', isDir: false }],
+      [`${base}/2026`]: [{ name: '07', isDir: true }],
+      [`${base}/2026/07`]: [{ name: '11', isDir: true }],
+      [`${base}/2026/07/11`]: [{ name: 'real.jsonl', isDir: false }],
+    })
+    fakeFs.readFile.mockImplementation(async (file) => {
+      if (String(file).includes('/2020/')) return 'noop\n'
+      return JSON.stringify({
+        timestamp: '2026-07-11T08:00:00Z',
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: { total_token_usage: { input_tokens: 5, output_tokens: 1, total_tokens: 6 } },
+        },
+      }) + '\n'
+    })
+
+    const result = await findEarliestCodexDate(base, { fsPromises: fakeFs })
+    expect(result).toBe('2026-07-11')
   })
 
   it('最早一月全空 → 跨月回溯', async () => {
@@ -384,6 +464,14 @@ describe('findEarliestCodexDate', () => {
         }
         return tree[dir] || []
       }),
+      readFile: vi.fn(async () => JSON.stringify({
+        timestamp: '2024-01-16T08:00:00Z',
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: { total_token_usage: { input_tokens: 1, total_tokens: 1 } },
+        },
+      })),
     }
 
     const result = await findEarliestCodexDate(base, { fsPromises: fakeFs })
@@ -610,7 +698,14 @@ describe('findEarliestLogDate', () => {
       // Codex 侧：建 sessions/2024/03/22/xxx.jsonl
       const codexDay = join(tmp, '.codex', 'sessions', '2024', '03', '22')
       fs.mkdirSync(codexDay, { recursive: true })
-      writeFileSync(join(codexDay, 'rollout.jsonl'), 'noop\n')
+      writeFileSync(join(codexDay, 'rollout.jsonl'), JSON.stringify({
+        timestamp: '2024-03-22T08:00:00Z',
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: { total_token_usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 } },
+        },
+      }) + '\n')
 
       // 不 mock 任何 fs，直接用真实文件
       const result = await findEarliestLogDate({ homeDir: tmp })

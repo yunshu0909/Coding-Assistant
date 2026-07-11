@@ -257,7 +257,6 @@ async function aggregateUsageDateRange(params, deps = {}) {
   let cachedDays = 0
   let recomputedDays = 0
   let failedDays = 0
-  let lastError = null
   let lastYieldAt = Date.now()
 
   const collectedSummaries = []
@@ -294,7 +293,6 @@ async function aggregateUsageDateRange(params, deps = {}) {
         if (!dailySummary) {
           currentSource = 'failed'
           failedDays += 1
-          lastError = 'RECOMPUTE_EMPTY'
         } else {
           recomputedDays += 1
           collectedSummaries.push(dailySummary)
@@ -306,10 +304,9 @@ async function aggregateUsageDateRange(params, deps = {}) {
             // noop
           }
         }
-      } catch (error) {
+      } catch {
         currentSource = 'failed'
         failedDays += 1
-        lastError = error?.message || 'RECOMPUTE_FAILED'
       }
     }
 
@@ -336,7 +333,9 @@ async function aggregateUsageDateRange(params, deps = {}) {
     }
   }
 
-  if (collectedSummaries.length === 0) {
+  // 任何一天失败都不能发布“看起来完整”的区间总数。
+  // 已成功补算的日汇总已经落盘，下次重试会直接命中，不浪费本轮工作。
+  if (failedDays > 0 || collectedSummaries.length === 0) {
     await progressReporter.emit({
       taskId,
       status: 'failed',
@@ -355,7 +354,16 @@ async function aggregateUsageDateRange(params, deps = {}) {
 
     return {
       success: false,
-      error: lastError || 'AGGREGATE_FAILED'
+      // 复用前端已有错误映射，不把底层文件/系统错误原文直接展示给用户。
+      error: 'AGGREGATE_FAILED',
+      meta: {
+        fromDailySummaryDays: cachedDays,
+        cachedDays,
+        recomputedDays,
+        totalDays,
+        failedDays,
+        partial: collectedSummaries.length > 0
+      }
     }
   }
 

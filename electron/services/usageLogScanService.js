@@ -498,9 +498,13 @@ function aggregateByProject(records) {
  * 把 Date 转成北京时间日期 key（YYYY-MM-DD）。
  * 就地实现避免与 usageDateRangeAggregationService 循环依赖。
  * @param {Date} date - 时间
- * @returns {string}
+ * @returns {string|null}
  */
 function toBeijingDateKey(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return null
+  }
+
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
     year: 'numeric',
@@ -519,15 +523,83 @@ function toBeijingDateKey(date) {
 }
 
 /**
- * Codex 目录天然按 YYYY/MM/DD 分层，readdir 即可拿到最早日期，不需要读任何文件。
- * 三层升序遍历，遇到空目录回溯到下一个：
- *   例如 2024/01/01/ 被手动删空了，但 2024/01/02/ 有数据，则返回 2024-01-02
+ * 在 Codex 文件中找到第一条有实际用量的 token_count 时间戳。
+ * 空文件、只有配置/正文的残留文件以及 totalTokens=0 的初始化快照都不算使用记录。
+ * @param {string} filePath - Codex JSONL 文件
+ * @param {object} deps - 依赖注入
+ * @returns {Promise<Date|null>}
+ */
+async function findFirstCodexUsageTimestampInFile(filePath, deps = {}) {
+  const readFileFn = deps.readFileFn || deps.fsPromises?.readFile
+
+  // 单测和小文件诊断可注入 readFile；生产默认走流式读取，避免把大 session 全载入内存。
+  if (typeof readFileFn === 'function') {
+    try {
+      const content = await readFileFn(filePath, 'utf-8')
+      for (const line of String(content).split('\n')) {
+        const snapshot = parseCodexTokenSnapshot(line)
+        if (
+          snapshot?.timestamp
+          && !Number.isNaN(snapshot.timestamp.getTime())
+          && snapshot.totalTokens > 0
+        ) {
+          return snapshot.timestamp
+        }
+      }
+    } catch {
+      return null
+    }
+    return null
+  }
+
+  const fsSync = deps.fsSync || require('fs')
+  const readline = deps.readline || require('readline')
+
+  return new Promise((resolve) => {
+    let resolved = false
+    let stream
+    try {
+      stream = fsSync.createReadStream(filePath, { encoding: 'utf-8' })
+    } catch {
+      resolve(null)
+      return
+    }
+
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity })
+    const finish = (value) => {
+      if (resolved) return
+      resolved = true
+      rl.close()
+      stream.destroy()
+      resolve(value)
+    }
+
+    rl.on('line', (line) => {
+      const snapshot = parseCodexTokenSnapshot(line)
+      if (
+        snapshot?.timestamp
+        && !Number.isNaN(snapshot.timestamp.getTime())
+        && snapshot.totalTokens > 0
+      ) {
+        finish(snapshot.timestamp)
+      }
+    })
+    rl.on('close', () => finish(null))
+    rl.on('error', () => finish(null))
+    stream.on('error', () => finish(null))
+  })
+}
+
+/**
+ * Codex 目录按 YYYY/MM/DD 分层，但目录和 JSONL 可能只是空残留。
+ * 三层升序遍历，并以文件内第一条有效 token_count 为准；没有用量则继续下一天。
  * @param {string} codexBasePath - ~/.codex/sessions
  * @param {object} deps - 依赖注入
  * @returns {Promise<string|null>} YYYY-MM-DD（北京时间）或 null
  */
 async function findEarliestCodexDate(codexBasePath, deps = {}) {
   const fs = deps.fsPromises || require('fs/promises')
+  const findFirstUsageTs = deps.findFirstCodexUsageTimestampInFileFn || findFirstCodexUsageTimestampInFile
 
   async function listSortedSubdirs(dirPath, validator) {
     try {
@@ -541,12 +613,15 @@ async function findEarliestCodexDate(codexBasePath, deps = {}) {
     }
   }
 
-  async function hasJsonl(dirPath) {
+  async function listJsonlFiles(dirPath) {
     try {
       const entries = await fs.readdir(dirPath)
-      return entries.some((name) => name.endsWith('.jsonl'))
+      return entries
+        .filter((name) => name.endsWith('.jsonl'))
+        .sort()
+        .map((name) => path.join(dirPath, name))
     } catch {
-      return false
+      return []
     }
   }
 
@@ -560,8 +635,18 @@ async function findEarliestCodexDate(codexBasePath, deps = {}) {
       const days = await listSortedSubdirs(path.join(codexBasePath, year, month), isMonthOrDay)
       for (const day of days) {
         const dayPath = path.join(codexBasePath, year, month, day)
-        if (await hasJsonl(dayPath)) {
-          return `${year}-${month}-${day}`
+        const files = await listJsonlFiles(dayPath)
+        let earliestInDay = null
+
+        for (const file of files) {
+          const timestamp = await findFirstUsageTs(file, deps).catch(() => null)
+          if (timestamp && (!earliestInDay || timestamp < earliestInDay)) {
+            earliestInDay = timestamp
+          }
+        }
+
+        if (earliestInDay) {
+          return toBeijingDateKey(earliestInDay)
         }
       }
     }
@@ -603,7 +688,7 @@ async function findFirstClaudeTimestampInFile(filePath, deps = {}) {
       const record = parseClaudeLog(line)
       // parseClaudeLog 只在有 message.usage 时才返回；
       // 早期 config 行（permission-mode 等）不会命中，正是我们想跳过的
-      if (record?.timestamp) {
+      if (record?.timestamp && !Number.isNaN(record.timestamp.getTime())) {
         finish(record.timestamp)
       }
     })
@@ -734,6 +819,7 @@ module.exports = {
   aggregateByProject,
   pathExists,
   toBeijingDateKey,
+  findFirstCodexUsageTimestampInFile,
   findEarliestCodexDate,
   findFirstClaudeTimestampInFile,
   listJsonlFilesRecursive,
