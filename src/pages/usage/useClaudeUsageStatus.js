@@ -65,7 +65,7 @@ export default function useClaudeUsageStatus() {
         setError(null)
 
         // 磁盘脚本版本落后时自动重写，用户无感
-        if (result.scriptOutdated && window.electronAPI?.ensureClaudeUsageStatusInstalled) {
+        if (result.usesManagedStatusLine && result.scriptOutdated && window.electronAPI?.ensureClaudeUsageStatusInstalled) {
           window.electronAPI.ensureClaudeUsageStatusInstalled({ force: true }).catch(() => {})
         }
       } else {

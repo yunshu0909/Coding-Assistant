@@ -93,6 +93,7 @@ describe('V1.9.9 会员额度来源与 stale', () => {
     expect(screen.getAllByText('2 小时未更新')).toHaveLength(2)
     expect(screen.getAllByText('12%')).toHaveLength(2)
     expect(screen.getAllByText('34%')).toHaveLength(2)
+    expect(screen.queryByText('读取异常')).not.toBeInTheDocument()
   })
 
   it('Q-TC-05: 恰好 2 小时时保持正常态', () => {
@@ -106,6 +107,31 @@ describe('V1.9.9 会员额度来源与 stale', () => {
     expect(screen.queryByText('2 小时未更新')).not.toBeInTheDocument()
     expect(screen.getByText('已接入')).toBeInTheDocument()
     expect(screen.getByText('已读取')).toBeInTheDocument()
+  })
+
+  it('Q-TC-04b: stale 获得新快照后恢复正常态', () => {
+    const staleAt = NOW_SECONDS - (2 * 60 * 60) - 1
+    const { rerender } = render(<ClaudeUsageColumn statusState={makeClaudeState(staleAt)} loading={false} />)
+    expect(screen.getByText('2 小时未更新')).toBeInTheDocument()
+
+    rerender(<ClaudeUsageColumn statusState={makeClaudeState(NOW_SECONDS)} loading={false} />)
+    expect(screen.queryByText('2 小时未更新')).not.toBeInTheDocument()
+    expect(screen.getByText('已接入')).toBeInTheDocument()
+  })
+
+  it('Q-TC-01b: 无额度数据和读取异常仍展示来源', () => {
+    const { rerender } = render(
+      <ClaudeUsageColumn
+        statusState={{ integrationState: 'waiting_for_data', snapshot: { updatedAt: NOW_SECONDS } }}
+        loading={false}
+      />
+    )
+    expect(screen.getByText('statusLine rate_limits 快照')).toBeInTheDocument()
+    expect(screen.getByText('当前账号没有额度数据')).toBeInTheDocument()
+
+    rerender(<ClaudeUsageColumn statusState={null} loading={false} error="READ_FAILED" />)
+    expect(screen.getByText('statusLine rate_limits 快照')).toBeInTheDocument()
+    expect(screen.getByText('读取异常')).toBeInTheDocument()
   })
 })
 
@@ -130,6 +156,22 @@ describe('V1.9.9 Claude 接入所有权交互', () => {
     const { result } = renderHook(() => useClaudeUsageStatus())
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(window.electronAPI.ensureClaudeUsageStatusInstalled).not.toHaveBeenCalled()
+  })
+
+  it('Q-TC-06b: not_configured 只在点击立即接入后调用安装', () => {
+    const onEnsureInstalled = vi.fn()
+    render(
+      <ClaudeUsageColumn
+        statusState={{ integrationState: 'not_configured', snapshot: null }}
+        loading={false}
+        installing={false}
+        onEnsureInstalled={onEnsureInstalled}
+      />
+    )
+    expect(onEnsureInstalled).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '立即接入' }))
+    expect(onEnsureInstalled).toHaveBeenCalledTimes(1)
+    expect(onEnsureInstalled).toHaveBeenCalledWith({ force: false })
   })
 
   it('Q-TC-07: conflict 主按钮只打开确认弹窗', () => {
@@ -164,6 +206,22 @@ describe('V1.9.9 Claude 接入所有权交互', () => {
     expect(onEnsureInstalled).not.toHaveBeenCalled()
   })
 
+  it('Q-TC-08a: 关闭按钮关闭弹窗且不调用安装', () => {
+    const onEnsureInstalled = vi.fn().mockResolvedValue(true)
+    render(
+      <ClaudeUsageColumn
+        statusState={{ integrationState: 'conflict', snapshot: null }}
+        loading={false}
+        installing={false}
+        onEnsureInstalled={onEnsureInstalled}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: '查看接管说明' }))
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(onEnsureInstalled).not.toHaveBeenCalled()
+  })
+
   it('Q-TC-08b: 确认接管才以 force=true 调用安装', async () => {
     const onEnsureInstalled = vi.fn().mockResolvedValue(true)
     render(
@@ -177,6 +235,7 @@ describe('V1.9.9 Claude 接入所有权交互', () => {
     fireEvent.click(screen.getByRole('button', { name: '查看接管说明' }))
     fireEvent.click(screen.getByRole('button', { name: '确认接管' }))
     await waitFor(() => expect(onEnsureInstalled).toHaveBeenCalledWith({ force: true }))
+    expect(onEnsureInstalled).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 
@@ -198,5 +257,28 @@ describe('V1.9.9 Claude 接入所有权交互', () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
     await waitFor(() => expect(ensure).toHaveBeenCalledTimes(1))
     expect(ensure).toHaveBeenCalledWith({ force: true })
+  })
+
+  it.each([
+    ['not_configured', false],
+    ['conflict', false],
+    ['ready', false],
+  ])('Q-TC-10b: %s 且未确认托管时不静默升级', async (integrationState, usesManagedStatusLine) => {
+    const ensure = vi.fn().mockResolvedValue({ success: true })
+    window.electronAPI = {
+      getClaudeUsageStatusState: vi.fn().mockResolvedValue({
+        success: true,
+        integrationState,
+        usesManagedStatusLine,
+        scriptOutdated: true,
+        config: {},
+        snapshot: null,
+      }),
+      getClaudeUsageHistory: vi.fn().mockResolvedValue({ success: true, completedCycles: [] }),
+      ensureClaudeUsageStatusInstalled: ensure,
+    }
+    const { result } = renderHook(() => useClaudeUsageStatus())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(ensure).not.toHaveBeenCalled()
   })
 })

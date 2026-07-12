@@ -31,7 +31,10 @@ function loadModuleWithHome(tempHome) {
   ]) {
     delete require.cache[modulePath]
   }
-  return require('../../../../electron/services/claudeUsageStatusService')
+  return {
+    usageModule: require('../../../../electron/services/claudeUsageStatusService'),
+    settingsModule: require('../../../../electron/services/claudeSettingsService'),
+  }
 }
 
 function createSettingsService(settingsPath, onWrite = () => {}) {
@@ -76,7 +79,7 @@ describe.sequential('V1.9.9 Claude statusLine ownership', () => {
       statusLine: { type: 'command', command: 'bash "/tmp/my-statusline.sh"' },
     }
     await fs.writeFile(settingsPath, `${JSON.stringify(customSettings, null, 2)}\n`, 'utf8')
-    const moduleUnderTest = loadModuleWithHome(tempHome)
+    const { usageModule: moduleUnderTest } = loadModuleWithHome(tempHome)
     const service = moduleUnderTest.createClaudeUsageStatusService({
       pathExists,
       claudeSettingsService: createSettingsService(settingsPath),
@@ -95,7 +98,7 @@ describe.sequential('V1.9.9 Claude statusLine ownership', () => {
     }, null, 2)}\n`
     await fs.writeFile(settingsPath, originalContent, 'utf8')
     const writes = []
-    const moduleUnderTest = loadModuleWithHome(tempHome)
+    const { usageModule: moduleUnderTest } = loadModuleWithHome(tempHome)
     const service = moduleUnderTest.createClaudeUsageStatusService({
       pathExists,
       claudeSettingsService: createSettingsService(settingsPath, (data, options) => writes.push({ data, options })),
@@ -108,5 +111,72 @@ describe.sequential('V1.9.9 Claude statusLine ownership', () => {
     expect(writes[0].options.backupSuffix).toBe('codepal-usage-status')
     expect(writes[0].options.previousContent).toBe(originalContent)
     expect(writes[0].data.statusLine.command).toBe(moduleUnderTest.MANAGED_STATUS_COMMAND)
+  })
+
+  it('Q-TC-09c: 后端基于真实 settings 分类未配置、自定义与 CodePal 托管', async () => {
+    const { usageModule: moduleUnderTest } = loadModuleWithHome(tempHome)
+    const settingsService = createSettingsService(settingsPath)
+    const service = moduleUnderTest.createClaudeUsageStatusService({ pathExists, claudeSettingsService: settingsService })
+
+    await fs.writeFile(settingsPath, '{}\n', 'utf8')
+    expect((await service.getUsageStatusState()).integrationState).toBe('not_configured')
+
+    await fs.writeFile(settingsPath, `${JSON.stringify({
+      statusLine: { type: 'command', command: 'bash "/tmp/custom.sh"' },
+    })}\n`, 'utf8')
+    const conflict = await service.getUsageStatusState()
+    expect(conflict.integrationState).toBe('conflict')
+    expect(conflict.hasCustomStatusLine).toBe(true)
+
+    await fs.writeFile(service.scriptPath, '# codepal-script-version: 7\n', { mode: 0o700 })
+    await fs.writeFile(settingsPath, `${JSON.stringify({
+      statusLine: { type: 'command', command: moduleUnderTest.MANAGED_STATUS_COMMAND },
+    })}\n`, 'utf8')
+    const managed = await service.getUsageStatusState()
+    expect(managed.integrationState).toBe('waiting_for_data')
+    expect(managed.usesManagedStatusLine).toBe(true)
+  })
+
+  it('Q-TC-09d: 真实唯一写入口先产生备份再替换 settings', async () => {
+    const originalContent = `${JSON.stringify({
+      statusLine: { type: 'command', command: 'bash "/tmp/custom.sh"' },
+    }, null, 2)}\n`
+    await fs.writeFile(settingsPath, originalContent, 'utf8')
+    const { usageModule, settingsModule } = loadModuleWithHome(tempHome)
+    const realSettingsService = settingsModule.createClaudeSettingsService({ pathExists })
+    const service = usageModule.createClaudeUsageStatusService({ pathExists, claudeSettingsService: realSettingsService })
+
+    const result = await service.ensureUsageStatusInstalled({ force: true })
+    const backupDir = path.join(tempHome, '.claude', 'backups')
+    const backups = await fs.readdir(backupDir)
+    const backupName = backups.find((name) => name.includes('codepal-usage-status'))
+    const after = JSON.parse(await fs.readFile(settingsPath, 'utf8'))
+
+    expect(result.success).toBe(true)
+    expect(backupName).toBeTruthy()
+    expect(await fs.readFile(path.join(backupDir, backupName), 'utf8')).toBe(originalContent)
+    expect(after.statusLine.command).toBe(usageModule.MANAGED_STATUS_COMMAND)
+  })
+
+  it.each([
+    ['PERMISSION_DENIED', '无法写入 Claude settings 备份'],
+    ['WRITE_FAILED', '写入 Claude settings.json 失败'],
+  ])('Q-TC-09e: settings 写入链路 %s 时保留自定义配置', async (errorCode, error) => {
+    const original = { statusLine: { type: 'command', command: 'bash "/tmp/custom.sh"' } }
+    await fs.writeFile(settingsPath, `${JSON.stringify(original, null, 2)}\n`, 'utf8')
+    const { usageModule } = loadModuleWithHome(tempHome)
+    const failingSettingsService = {
+      ...createSettingsService(settingsPath),
+      writeClaudeSettingsFile: async () => ({ success: false, errorCode, error }),
+    }
+    const service = usageModule.createClaudeUsageStatusService({ pathExists, claudeSettingsService: failingSettingsService })
+
+    const result = await service.ensureUsageStatusInstalled({ force: true })
+    const after = JSON.parse(await fs.readFile(settingsPath, 'utf8'))
+
+    expect(result.success).toBe(false)
+    expect(result.integrationState).toBe('setup_failed')
+    expect(result.errorCode).toBe(errorCode)
+    expect(after.statusLine.command).toBe(original.statusLine.command)
   })
 })
