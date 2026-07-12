@@ -165,7 +165,6 @@ describe('V1.9.9 Claude 接入所有权交互', () => {
         config: {},
         snapshot: null,
       }),
-      getClaudeUsageHistory: vi.fn().mockResolvedValue({ success: true, completedCycles: [] }),
       ensureClaudeUsageStatusInstalled: vi.fn(),
     }
     const { result } = renderHook(() => useClaudeUsageStatus())
@@ -265,7 +264,6 @@ describe('V1.9.9 Claude 接入所有权交互', () => {
         config: {},
         snapshot: makeSnapshot(),
       }),
-      getClaudeUsageHistory: vi.fn().mockResolvedValue({ success: true, completedCycles: [] }),
       ensureClaudeUsageStatusInstalled: ensure,
     }
     const { result } = renderHook(() => useClaudeUsageStatus())
@@ -289,7 +287,6 @@ describe('V1.9.9 Claude 接入所有权交互', () => {
         config: {},
         snapshot: null,
       }),
-      getClaudeUsageHistory: vi.fn().mockResolvedValue({ success: true, completedCycles: [] }),
       ensureClaudeUsageStatusInstalled: ensure,
     }
     const { result } = renderHook(() => useClaudeUsageStatus())

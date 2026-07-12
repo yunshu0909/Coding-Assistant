@@ -24,13 +24,6 @@ function registerCodexUsageStatusHandlers({ ipcMain, pathExists }) {
   ipcMain.handle('codex-usage-status:get-state', async () => {
     return codexUsageStatusService.getCodexUsageStatusState()
   })
-
-  /**
-   * IPC: 获取 Codex 满载率趋势（按自然周聚合 7 天窗口峰值）
-   */
-  ipcMain.handle('codex-usage-status:get-trend', async () => {
-    return codexUsageStatusService.getCodexUsageTrend()
-  })
 }
 
 module.exports = {

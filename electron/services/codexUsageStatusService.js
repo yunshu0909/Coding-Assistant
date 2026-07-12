@@ -26,11 +26,6 @@ const MAX_FILES = 200
 // rate_limits 在每次 token_count 都写，尾部 5000 行必含最新值。
 const MAX_LINES_PER_FILE = 5000
 
-// 满载率趋势回看窗口：Codex 是滚动 weekly（resets_at 持续漂移，无离散周期），
-// 故按「自然周」聚合 secondary.used_percent 峰值。回看 ~13 周对齐 Claude MAX_COMPLETED_CYCLES。
-const TREND_LOOKBACK_DAYS = 95
-const MAX_TREND_WEEKS = 13
-
 /**
  * 把额度百分比归一化为 [0,100] 整数；无效值返回 null。
  * 注意：0 是合法值（用量为 0），不能当 falsy 漏掉。
@@ -206,93 +201,6 @@ async function getCodexUsageStatusState(deps = {}) {
 }
 
 /**
- * 求某毫秒时刻所在「自然周」的周一 00:00（本地时区）的 unix 秒
- * @param {number} ms - 毫秒时间戳
- * @returns {number} 周一 00:00 的 unix 秒
- */
-function weekStartUnix(ms) {
-  const d = new Date(ms)
-  d.setHours(0, 0, 0, 0)
-  const dayFromMonday = (d.getDay() + 6) % 7 // 周一=0 … 周日=6
-  d.setDate(d.getDate() - dayFromMonday)
-  return Math.floor(d.getTime() / 1000)
-}
-
-/**
- * 重建 Codex 满载率趋势（按自然周聚合 7 天窗口 used_percent 峰值）。
- *
- * 为什么按自然周而非周期：Codex weekly 是滚动窗口，resets_at 持续漂移（实机本机扫出
- * 数百个不同 resets_at），没有 Claude 那种固定的「已完成周期」。改用自然周聚合峰值，
- * 得到稳定、可对比的「每周满载峰值」趋势。输出形状与 Claude history 一致（{currentCycle,
- * completedCycles}），前端可走同一套 classifyHistory + 渲染。
- *
- * @param {object} [deps] - 依赖注入（测试用）
- * @returns {Promise<{success:boolean, currentCycle:object|null, completedCycles:object[], error?:string}>}
- */
-async function getCodexUsageTrend(deps = {}) {
-  const homeDir = deps.homeDir || os.homedir()
-  const pathExistsFn = deps.pathExistsFn || pathExists
-  const scanFn = deps.scanLogFilesInRangeFn || scanLogFilesInRange
-  const nowMs = typeof deps.now === 'number' ? deps.now : Date.now()
-  const sessionsDir = path.join(homeDir, '.codex', 'sessions')
-
-  try {
-    if (!(await pathExistsFn(sessionsDir))) {
-      return { success: true, currentCycle: null, completedCycles: [] }
-    }
-
-    const start = new Date(nowMs - TREND_LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
-    const end = new Date(nowMs)
-    const scanResult = await scanFn(sessionsDir, start, end, {
-      maxFiles: 3000,
-      maxLinesPerFile: 20000
-    })
-
-    // periodStart(周一 unix) -> 该周 secondary.used_percent 峰值
-    const weekPeak = new Map()
-    for (const file of scanResult?.files || []) {
-      for (const line of file.lines || []) {
-        const parsed = parseCodexRateLimits(line)
-        if (!parsed?.timestamp) continue
-        const tsMs = parsed.timestamp.getTime()
-        if (!Number.isFinite(tsMs)) continue
-        const used = Number(parsed.rateLimits?.secondary?.used_percent)
-        if (!Number.isFinite(used)) continue
-        const ws = weekStartUnix(tsMs)
-        const prev = weekPeak.get(ws)
-        if (prev === undefined || used > prev) weekPeak.set(ws, used)
-      }
-    }
-
-    const nowSec = Math.floor(nowMs / 1000)
-    const cycles = [...weekPeak.entries()].map(([periodStart, used]) => ({
-      periodStart,
-      periodEnd: periodStart + 7 * 86400,
-      peakPercentage: clampPercentage(used)
-    }))
-
-    let currentCycle = null
-    const completedCycles = []
-    for (const cycle of cycles) {
-      if (cycle.periodStart <= nowSec && nowSec < cycle.periodEnd) {
-        currentCycle = cycle
-      } else if (cycle.periodEnd <= nowSec) {
-        completedCycles.push(cycle)
-      }
-    }
-    completedCycles.sort((a, b) => b.periodEnd - a.periodEnd)
-
-    return {
-      success: true,
-      currentCycle,
-      completedCycles: completedCycles.slice(0, MAX_TREND_WEEKS)
-    }
-  } catch (error) {
-    return { success: false, currentCycle: null, completedCycles: [], error: error?.message || 'CODEX_TREND_FAILED' }
-  }
-}
-
-/**
  * 工厂：创建 Codex 会员额度状态服务（与 claudeUsageStatusService 的依赖注入风格一致）
  * @param {object} [deps] - 依赖注入
  * @param {(p:string)=>Promise<boolean>} [deps.pathExists] - 路径存在检查
@@ -301,19 +209,16 @@ async function getCodexUsageTrend(deps = {}) {
 function createCodexUsageStatusService({ pathExists: injectedPathExists } = {}) {
   const deps = injectedPathExists ? { pathExistsFn: injectedPathExists } : {}
   return {
-    getCodexUsageStatusState: () => getCodexUsageStatusState(deps),
-    getCodexUsageTrend: () => getCodexUsageTrend(deps)
+    getCodexUsageStatusState: () => getCodexUsageStatusState(deps)
   }
 }
 
 module.exports = {
   createCodexUsageStatusService,
   getCodexUsageStatusState,
-  getCodexUsageTrend,
   getLatestCodexRateLimits,
   normalizeCodexSnapshot,
   clampPercentage,
   toResetUnixSeconds,
-  weekStartUnix,
   LOOKBACK_DAYS
 }

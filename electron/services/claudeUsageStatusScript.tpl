@@ -3,21 +3,17 @@
 # CodePal-managed Claude Code usage status line.
 # Reads Claude Code's JSON stdin, writes a local snapshot, and prints
 # a single status line based on the user's display mode.
-# v4: also tracks 7d cycle peak history for 满载率趋势 feature.
 # v5: also shows current context window usage (bar + percent) by parsing
 #     transcript_path's last assistant usage entry.
-# v6: handles Anthropic provider_reset events — when sevenDayResetsAt jumps
-#     forward by < 6.5 days (non-natural shift), seal the prev window as an
-#     anomaly cycle instead of a normal completed cycle, so the 满载率 metric
-#     is not polluted by short partial windows.
 # v7: appends a second line with Git info (git:<branch>@<nearest-tag><dirty>)
 #     for the cwd's repo. Coupled to the usage line: only emitted when the
 #     usage/no-rate-limits first line is printed. All git calls are read-only
 #     with a 1.0s timeout each; any failure silently drops the second line so
 #     the status line never breaks.
+# v8: stops collecting the retired 7d peak-history metric.
 
 input=$(cat)
-CODEPAL_STATUS_PAYLOAD="$input" python3 - "__CONFIG_PATH__" "__SNAPSHOT_PATH__" "__HISTORY_PATH__" <<'PY'
+CODEPAL_STATUS_PAYLOAD="$input" python3 - "__CONFIG_PATH__" "__SNAPSHOT_PATH__" <<'PY'
 import json
 import os
 import re
@@ -26,8 +22,6 @@ import sys
 import tempfile
 import time
 from datetime import datetime
-
-MAX_COMPLETED_CYCLES = __MAX_COMPLETED_CYCLES__
 
 RESET = "\033[0m"
 DIM = "\033[2m"
@@ -44,7 +38,6 @@ DEFAULT_CONFIG = {
 
 config_path = sys.argv[1]
 snapshot_path = sys.argv[2]
-history_path = sys.argv[3] if len(sys.argv) > 3 else None
 payload_raw = os.environ.get("CODEPAL_STATUS_PAYLOAD", "")
 
 try:
@@ -239,136 +232,6 @@ def write_snapshot(snapshot):
         except OSError:
             pass
 
-def load_history():
-    """读取历史文件；损坏或不存在都返回干净的空结构，不抛异常影响状态栏主流程"""
-    default = {"version": 1, "currentCycle": None, "completedCycles": []}
-    if not history_path or not os.path.exists(history_path):
-        return default
-    try:
-        with open(history_path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-    except Exception:
-        return default
-    if not isinstance(data, dict):
-        return default
-    current_cycle = data.get("currentCycle") if isinstance(data.get("currentCycle"), dict) else None
-    completed = data.get("completedCycles") if isinstance(data.get("completedCycles"), list) else []
-    # 过滤非法条目
-    completed = [c for c in completed if isinstance(c, dict)]
-    return {
-        "version": 1,
-        "currentCycle": current_cycle,
-        "completedCycles": completed,
-    }
-
-def write_history(history):
-    if not history_path:
-        return
-    directory = os.path.dirname(history_path)
-    os.makedirs(directory, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(prefix="codepal-usage-history-", suffix=".tmp", dir=directory)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(history, handle, ensure_ascii=False, indent=2)
-            handle.write("\n")
-        os.replace(tmp_path, history_path)
-    except Exception:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-
-ONE_WEEK_SECONDS = 7 * 86400
-JUMP_THRESHOLD_SECONDS = int(6.5 * 86400)  # delta < 6.5 天 且 > 0 视为异常跳变
-
-
-def update_history(week_pct_value, week_resets_at_value):
-    """
-    更新 7d 周期历史。
-    - 无数据时：跳过
-    - sevenDayResetsAt 与上次相同 → 同一周期，更新峰值
-    - sevenDayResetsAt 前移且 delta < 6.5 天 → Anthropic provider_reset 等异常跳变，
-      封存旧窗口为异常条目（periodEnd 夹到新 currentCycle 起点），新 currentCycle 的
-      peak 直接用 current_pct，不继承旧 peak
-    - sevenDayResetsAt 前移且 delta ≥ 6.5 天 → 正常 7d 周期完成，按 v1.4.1 逻辑封存
-    - completedCycles 超过 MAX_COMPLETED_CYCLES 时裁剪最旧
-    """
-    if week_pct_value is None or week_resets_at_value is None:
-        return
-    try:
-        current_resets_at = int(week_resets_at_value)
-        current_pct = float(week_pct_value)
-    except Exception:
-        return
-
-    history = load_history()
-    prev = history.get("currentCycle")
-    period_start = current_resets_at - ONE_WEEK_SECONDS
-
-    if prev is None:
-        history["currentCycle"] = {
-            "periodStart": period_start,
-            "sevenDayResetsAt": current_resets_at,
-            "peakPercentage": current_pct,
-        }
-        write_history(history)
-        return
-
-    prev_resets_at = prev.get("sevenDayResetsAt")
-    try:
-        prev_resets_at_num = int(prev_resets_at) if prev_resets_at is not None else None
-    except Exception:
-        prev_resets_at_num = None
-
-    existing_peak = prev.get("peakPercentage")
-    try:
-        existing_peak_num = float(existing_peak) if existing_peak is not None else 0.0
-    except Exception:
-        existing_peak_num = 0.0
-
-    if prev_resets_at_num == current_resets_at:
-        # 同一周期：更新峰值
-        history["currentCycle"] = {
-            "periodStart": prev.get("periodStart", period_start),
-            "sevenDayResetsAt": current_resets_at,
-            "peakPercentage": max(existing_peak_num, current_pct),
-        }
-        write_history(history)
-        return
-
-    delta = current_resets_at - prev_resets_at_num if prev_resets_at_num is not None else None
-
-    # 判定异常跳变：delta 在 (0, JUMP_THRESHOLD) 之间
-    is_anomaly = delta is not None and 0 < delta < JUMP_THRESHOLD_SECONDS
-
-    if is_anomaly:
-        sealed = {
-            "periodStart": prev.get("periodStart", current_resets_at - 14 * 86400),
-            "periodEnd": period_start,  # 夹到新 current 起点，避免重叠
-            "peakPercentage": existing_peak_num,
-            "anomaly": True,
-            "anomalyReason": "provider_reset",
-        }
-    else:
-        sealed = {
-            "periodStart": prev.get("periodStart", current_resets_at - 14 * 86400),
-            "periodEnd": prev_resets_at_num if prev_resets_at_num is not None else current_resets_at,
-            "peakPercentage": existing_peak_num,
-        }
-
-    completed = history.get("completedCycles", [])
-    completed.insert(0, sealed)
-    if len(completed) > MAX_COMPLETED_CYCLES:
-        completed = completed[:MAX_COMPLETED_CYCLES]
-    history["completedCycles"] = completed
-    history["currentCycle"] = {
-        "periodStart": period_start,
-        "sevenDayResetsAt": current_resets_at,
-        "peakPercentage": current_pct,  # 异常/正常都用真实新 peak，不继承
-    }
-
-    write_history(history)
-
 _GIT_TIMEOUT = 1.0  # v7: 每个 git 子命令超时上限（秒），冻结值见 PRD V1.6.5
 
 def _git_capture(cwd, args):
@@ -475,9 +338,6 @@ snapshot = {
     "updatedAt": int(time.time()),
 }
 write_snapshot(snapshot)
-
-# v4: 写入 7d 周期历史（与 displayMode 无关，off 模式也要记）
-update_history(week_pct, week_resets_at)
 
 if not should_render(config, five_pct, week_pct):
     raise SystemExit(0)

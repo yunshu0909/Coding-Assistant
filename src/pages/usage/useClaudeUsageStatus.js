@@ -34,8 +34,6 @@ export default function useClaudeUsageStatus() {
   const [error, setError] = useState(null)
   // 表单配置：用户在卡片里编辑的显示模式与阈值
   const [formConfig, setFormConfig] = useState(DEFAULT_FORM_CONFIG)
-  // v1.4.1: 7d 周期满载率历史数据
-  const [history, setHistory] = useState({ currentCycle: null, completedCycles: [] })
 
   /**
    * 拉取当前状态
@@ -83,33 +81,9 @@ export default function useClaudeUsageStatus() {
     }
   }, [])
 
-  /**
-   * v1.4.1: 拉取 7d 周期满载率历史
-   * 失败静默处理，不阻塞主流程（趋势是次要信息）
-   * @returns {Promise<void>}
-   */
-  const loadHistory = useCallback(async () => {
-    if (!window.electronAPI?.getClaudeUsageHistory) {
-      setHistory({ currentCycle: null, completedCycles: [] })
-      return
-    }
-    try {
-      const result = await window.electronAPI.getClaudeUsageHistory()
-      if (result?.success) {
-        setHistory({
-          currentCycle: result.currentCycle || null,
-          completedCycles: Array.isArray(result.completedCycles) ? result.completedCycles : [],
-        })
-      }
-    } catch {
-      // 历史读取失败静默处理，保持空结构即可
-    }
-  }, [])
-
   useEffect(() => {
     loadStatus()
-    loadHistory()
-  }, [loadStatus, loadHistory])
+  }, [loadStatus])
 
   /**
    * 重试安装/修复
@@ -204,9 +178,7 @@ export default function useClaudeUsageStatus() {
     saving,
     error,
     formConfig,
-    history,
     loadStatus,
-    loadHistory,
     ensureInstalled,
     updateFormConfig,
     saveConfig,

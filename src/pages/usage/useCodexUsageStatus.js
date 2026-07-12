@@ -19,8 +19,6 @@ export default function useCodexUsageStatus() {
   const [statusState, setStatusState] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  // Codex 满载率趋势（按自然周聚合，形状与 Claude history 一致）
-  const [trend, setTrend] = useState({ currentCycle: null, completedCycles: [] })
 
   /**
    * 拉取当前 Codex 额度状态
@@ -53,32 +51,9 @@ export default function useCodexUsageStatus() {
     }
   }, [])
 
-  /**
-   * 拉取 Codex 满载率趋势（失败静默，趋势是次要信息）
-   * @returns {Promise<void>}
-   */
-  const loadTrend = useCallback(async () => {
-    if (!window.electronAPI?.getCodexUsageTrend) {
-      setTrend({ currentCycle: null, completedCycles: [] })
-      return
-    }
-    try {
-      const result = await window.electronAPI.getCodexUsageTrend()
-      if (result?.success) {
-        setTrend({
-          currentCycle: result.currentCycle || null,
-          completedCycles: Array.isArray(result.completedCycles) ? result.completedCycles : [],
-        })
-      }
-    } catch {
-      // 趋势读取失败静默处理，保持空结构
-    }
-  }, [])
-
   useEffect(() => {
     loadStatus()
-    loadTrend()
-  }, [loadStatus, loadTrend])
+  }, [loadStatus])
 
-  return { statusState, loading, error, trend, loadStatus, loadTrend }
+  return { statusState, loading, error, loadStatus }
 }

@@ -76,12 +76,11 @@ beforeAll(() => {
   TMP_HOME = mkd()
   process.env.HOME = TMP_HOME // 事前 HOME 沙箱
   RAW = svc.buildStatusScriptContent()
-  // 隔离：把渲染产物里的真实三路径替换到临时目录
+  // 隔离：把渲染产物里的真实配置/快照路径替换到临时目录
   let s = RAW
   for (const [real, tmpName] of [
     [svc.STATUS_CONFIG_PATH, 'cfg.json'],
     [svc.STATUS_SNAPSHOT_PATH, 'snap.json'],
-    [svc.STATUS_HISTORY_PATH, 'hist.json'],
   ]) {
     s = s.split(real).join(path.join(TMP, tmpName))
   }
@@ -89,7 +88,7 @@ beforeAll(() => {
   fs.writeFileSync(SL, s)
   fs.chmodSync(SL, 0o755)
   // config 不会被 ambient statusLine 写（只在用户保存时写），用内容快照精确把关；
-  // snapshot/history 宿主自身 Claude Code statusLine 每 prompt 都写，不能用它判我们的污染。
+  // snapshot 宿主自身 Claude Code statusLine 每 prompt 都写，不能用它判我们的污染。
   const rd = (p) => { try { return fs.readFileSync(p) } catch { return null } }
   REALSNAP = {
     cfg: rd(svc.STATUS_CONFIG_PATH),
@@ -109,9 +108,9 @@ describe('模块A 资格地基', () => {
     expect(RAW.length).toBeGreaterThan(0)
     expect(RAW.match(/__[A-Z_]+__/)).toBeNull()
   })
-  it('TC-002 SCRIPT_VERSION===7 且版本注释为7', () => {
-    expect(svc.SCRIPT_VERSION).toBe(7)
-    expect(/^# codepal-script-version: 7$/m.test(RAW)).toBe(true)
+  it('TC-002 SCRIPT_VERSION===8 且版本注释为8', () => {
+    expect(svc.SCRIPT_VERSION).toBe(8)
+    expect(/^# codepal-script-version: 8$/m.test(RAW)).toBe(true)
   })
   it('TC-003 渲染脚本 Python 段语法可解析', () => {
     const body = RAW.split("<<'PY'")[1].split('\nPY')[0]
@@ -139,8 +138,8 @@ describe('模块A 资格地基', () => {
     expect(m && m[1]).toBe('6')
     expect(6 < svc.SCRIPT_VERSION).toBe(true)
     const cur = RAW.match(/^# codepal-script-version:\s*(\d+)/m)
-    expect(cur[1]).toBe('7')
-    expect(7 < svc.SCRIPT_VERSION).toBe(false)
+    expect(cur[1]).toBe('8')
+    expect(8 < svc.SCRIPT_VERSION).toBe(false)
   })
 })
 
@@ -420,8 +419,9 @@ describe('贯穿安全', () => {
       .replace(/__SCRIPT_VERSION__/g, '6')
       .split('__CONFIG_PATH__').join(path.join(TMP, 'cfg.json'))
       .split('__SNAPSHOT_PATH__').join(path.join(TMP, 'snap.json'))
+      // HEAD 基线仍是带历史采集的 v7 模板，必须完整渲染旧占位符后再比较第一行。
       .split('__HISTORY_PATH__').join(path.join(TMP, 'hist.json'))
-      .replace(/__MAX_COMPLETED_CYCLES__/g, String(svc.MAX_COMPLETED_CYCLES))
+      .replace(/__MAX_COMPLETED_CYCLES__/g, '13')
     const baseSh = path.join(TMP, 'base.sh')
     fs.writeFileSync(baseSh, bs); fs.chmodSync(baseSh, 0o755)
 

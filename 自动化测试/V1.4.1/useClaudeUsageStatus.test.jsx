@@ -2,8 +2,7 @@
  * V1.4.1 useClaudeUsageStatus Hook 单元测试
  *
  * 负责：
- * - 验证初次加载的 loading / statusState / history 流转
- * - 验证 loadHistory 对 success/非 success 的分支处理
+ * - 验证初次加载的 loading / statusState 流转
  * - 验证 saveConfig(override) 的 v1.4.1 新行为：IPC 使用 override 参数
  * - 验证 saveConfig() 不带 override 时回退到内部 formConfig
  * - 验证 IPC 抛异常时的错误态处理
@@ -43,11 +42,6 @@ describe('useClaudeUsageStatus (V1.4.1)', () => {
     global.window = global.window || {}
     window.electronAPI = {
       getClaudeUsageStatusState: vi.fn().mockResolvedValue(makeStatusResponse()),
-      getClaudeUsageHistory: vi.fn().mockResolvedValue({
-        success: true,
-        currentCycle: null,
-        completedCycles: [],
-      }),
       saveClaudeUsageStatusConfig: vi.fn().mockResolvedValue(makeStatusResponse()),
       ensureClaudeUsageStatusInstalled: vi.fn().mockResolvedValue(makeStatusResponse()),
     }
@@ -75,70 +69,13 @@ describe('useClaudeUsageStatus (V1.4.1)', () => {
       expect(result.current.statusState).not.toBeNull()
       expect(result.current.statusState.integrationState).toBe('ready')
       expect(window.electronAPI.getClaudeUsageStatusState).toHaveBeenCalledTimes(1)
-      expect(window.electronAPI.getClaudeUsageHistory).toHaveBeenCalledTimes(1)
-    })
-
-    it('history 初始为空，加载成功后被填充', async () => {
-      const currentCycle = { cycleId: 'c1', maxUsagePercent: 42 }
-      const completedCycles = [{ cycleId: 'prev-1', maxUsagePercent: 88 }]
-
-      window.electronAPI.getClaudeUsageHistory.mockResolvedValueOnce({
-        success: true,
-        currentCycle,
-        completedCycles,
-      })
-
-      const { result } = renderHook(() => useClaudeUsageStatus())
-
-      await waitFor(() => expect(result.current.loading).toBe(false))
-
-      expect(result.current.history.currentCycle).toEqual(currentCycle)
-      expect(result.current.history.completedCycles).toEqual(completedCycles)
     })
   })
 
   // ============================================================
-  // B. loadHistory
+  // B. saveConfig with override (v1.4.1)
   // ============================================================
-  describe('B. loadHistory', () => {
-    it('success=false 时保持默认 history 结构', async () => {
-      // 第一次返回 success=false
-      window.electronAPI.getClaudeUsageHistory.mockResolvedValue({
-        success: false,
-        error: 'read failed',
-      })
-
-      const { result } = renderHook(() => useClaudeUsageStatus())
-      await waitFor(() => expect(result.current.loading).toBe(false))
-
-      expect(result.current.history).toEqual({ currentCycle: null, completedCycles: [] })
-    })
-
-    it('主动调用 loadHistory 能更新 state', async () => {
-      const { result } = renderHook(() => useClaudeUsageStatus())
-      await waitFor(() => expect(result.current.loading).toBe(false))
-
-      // 更改 mock，准备下一次调用返回新数据
-      const newCycle = { cycleId: 'c2', maxUsagePercent: 99 }
-      window.electronAPI.getClaudeUsageHistory.mockResolvedValueOnce({
-        success: true,
-        currentCycle: newCycle,
-        completedCycles: [{ cycleId: 'done', maxUsagePercent: 50 }],
-      })
-
-      await act(async () => {
-        await result.current.loadHistory()
-      })
-
-      expect(result.current.history.currentCycle).toEqual(newCycle)
-      expect(result.current.history.completedCycles.length).toBe(1)
-    })
-  })
-
-  // ============================================================
-  // C. saveConfig with override (v1.4.1)
-  // ============================================================
-  describe('C. saveConfig 携带 override（v1.4.1 新行为）', () => {
+  describe('B. saveConfig 携带 override（v1.4.1 新行为）', () => {
     it('使用 override 的值调用 IPC，而不是内部 formConfig', async () => {
       const { result } = renderHook(() => useClaudeUsageStatus())
       await waitFor(() => expect(result.current.loading).toBe(false))
@@ -168,9 +105,9 @@ describe('useClaudeUsageStatus (V1.4.1)', () => {
   })
 
   // ============================================================
-  // D. saveConfig 不带 override（向后兼容）
+  // C. saveConfig 不带 override（向后兼容）
   // ============================================================
-  describe('D. saveConfig 无 override 回退到 formConfig', () => {
+  describe('C. saveConfig 无 override 回退到 formConfig', () => {
     it('使用 formConfig 的当前值调用 IPC', async () => {
       const { result } = renderHook(() => useClaudeUsageStatus())
       await waitFor(() => expect(result.current.loading).toBe(false))
@@ -196,9 +133,9 @@ describe('useClaudeUsageStatus (V1.4.1)', () => {
   })
 
   // ============================================================
-  // E. 错误处理
+  // D. 错误处理
   // ============================================================
-  describe('E. 错误处理', () => {
+  describe('D. 错误处理', () => {
     it('getClaudeUsageStatusState 抛异常 → loading=false, statusState=null, error 被设置', async () => {
       window.electronAPI.getClaudeUsageStatusState.mockRejectedValueOnce(
         new Error('boom')

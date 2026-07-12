@@ -399,22 +399,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveClaudeUsageStatusConfig: (config) => ipcRenderer.invoke('claude-usage-status:save-config', config),
 
   /**
-   * 获取 Claude Code 会员额度 7d 周期满载率历史（v1.4.1）
-   * @returns {Promise<{success: boolean, exists: boolean, currentCycle: object|null, completedCycles: Array}>}
-   */
-  getClaudeUsageHistory: () => ipcRenderer.invoke('claude-usage-status:get-history'),
-
-  /**
    * 获取 Codex 会员额度状态（最新 rate_limits，只读 ~/.codex/sessions 日志，零配置）
    * @returns {Promise<{success: boolean, integrationState: string, snapshot: object|null}>}
    */
   getCodexUsageStatusState: () => ipcRenderer.invoke('codex-usage-status:get-state'),
-
-  /**
-   * 获取 Codex 满载率趋势（按自然周聚合 7 天窗口峰值，输出与 Claude history 同形）
-   * @returns {Promise<{success: boolean, currentCycle: object|null, completedCycles: Array}>}
-   */
-  getCodexUsageTrend: () => ipcRenderer.invoke('codex-usage-status:get-trend'),
 
   // V0.14 双向自动同步 APIs
 
