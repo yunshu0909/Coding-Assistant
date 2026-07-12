@@ -130,6 +130,22 @@ describe('V1.9.7 新建项目 v3 模板（托管 Coding 框架）', () => {
     expect(md).toContain('①→④→⑤')
   })
 
+  it('BE-11: Git 工作流为 branch-per-task + PR，含 issue 命名与本地仓例外', async () => {
+    const execute = handlers.get('project-init-execute')
+    const projectRoot = path.join(tempBasePath, 'p11')
+    await execute({}, { projectName: 'p11', targetPath: tempBasePath, gitMode: 'none', templates: ['claude'], overwrite: false })
+    const md = await fs.readFile(path.join(projectRoot, 'CLAUDE.md'), 'utf-8')
+    expect(md).toContain('branch-per-task')
+    // 分支按 issue 命名，四者可追溯
+    expect(md).toContain('feat/issue-N-简述')
+    // PR 门禁是命根子
+    expect(md).toContain('PR 必须触发测试门禁')
+    // 纯本地仓（无远程）例外：直接提交主干
+    expect(md).toContain('纯本地仓')
+    // 协议版本已递增
+    expect(md).toContain('协议 v3.1')
+  })
+
   it('BE-7: AGENTS 首行 # AGENTS.md，与 CLAUDE 除首行一致，含同步提示', async () => {
     const execute = handlers.get('project-init-execute')
     const projectRoot = path.join(tempBasePath, 'p5')

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> 协议 v3（2026-07，由 CodePal「新建项目」生成）。AGENTS.md 与 CLAUDE.md 内容一致（分别供 Codex / Claude Code 读取），**改一份请同步另一份。**
+> 协议 v3.1（2026-07，由 CodePal「新建项目」生成；v3.1 起开发范式为 branch-per-task + PR）。AGENTS.md 与 CLAUDE.md 内容一致（分别供 Codex / Claude Code 读取），**改一份请同步另一份。**
 
 ## 项目简介
 
@@ -29,8 +29,8 @@
  → ①规划   issue-pool：记入 ISSUES.md → 合并同源 → 拆成 task（复杂 plan 落 docs/plan/ 滚动）
  → ②设计   design-exploration（需要时）→ specs/<单元>/2-design.md
  → ③定义   prd-test-writer → specs/<单元>/3-prd.md + 4-test-cases.md
- → ④开发   模型自主：读 4-test-cases.md 写代码 + 测试跑绿 → 人验收
- → ⑤发布   模型按项目发布方式执行（GitHub 项目可用 git-push）
+ → ④开发   模型自主：从主干开分支 feat/issue-N-简述 → 读 4-test-cases.md 写代码 + 测试跑绿
+ → ⑤发布   有远程仓：开 PR → 测试门禁绿 + 人验收 → 合并主干；攒够改动语义化发版（可选 git-push）
  → ⑥反馈   模型自主处理外部反馈（GitHub issue 可用 issue-triage）→ 新需求记回池子 ↺
 ```
 
@@ -41,8 +41,8 @@
 | ①规划 | `issue-pool` skill | 想法 / 痛点 / 反馈 | task 挂池子条目下；复杂 plan → `docs/plan/` |
 | ②设计（需要时） | `design-exploration` skill | 可开工 task | 设计需求总结 + 实现契约 → `specs/<单元>/2-design.md` |
 | ③定义 | `prd-test-writer` skill | task（+ 设计） | PRD / 测试用例 → `specs/<单元>/3-prd.md`、`4-test-cases.md` |
-| ④开发·测试 | 模型自主 | `4-test-cases.md` | 代码 + 测试绿 → `code/`，人验收 |
-| ⑤发布 | 模型自主（可选 `git-push` skill） | 验收通过 | 按项目方式：commit+tag+push / 部署 / 其他 |
+| ④开发·测试 | 模型自主 | `4-test-cases.md` | 开分支 `feat/issue-N-简述` 写代码 + 测试绿 → `code/` |
+| ⑤发布 | 模型自主（可选 `git-push` skill） | 测试绿 | 有远程：PR → 门禁 + 人验收 → 合并主干 → 发版；纯本地：直接提交主干 |
 | ⑥反馈 | 模型自主（可选 `issue-triage` skill） | 外部反馈 | 分析 + 回复；新需求记回 `ISSUES.md` |
 
 skill 的自动触发接用户随口话术；本表管流程中段的交接——上一环产出就绪时，AI 应主动按表进入下一环，不等用户点名。
@@ -66,14 +66,17 @@ skill 的自动触发接用户随口话术；本表管流程中段的交接—�
 
 新项目没有全局设计规范是正常的：`2-design` 只写「本单元需求 + 实现契约」，某种模式反复稳定后才沉淀进 `docs/`——是长出来的，不是一开始就要有的。规范与样板见 `specs/README.md` 和 `specs/_example-示例功能/`。
 
-## Git 工作流
+## Git 工作流（branch-per-task + PR）
 
 - 主干 `main`（老项目 `master` 沿用）始终保持可发布。
-- 日常 trunk-based 直接提交；大 / 风险 / 实验性改动才开**短命分支** `feat/简述`、`fix/简述`，绿了 merge 回主干并删分支。
+- **有远程的代码仓：每个 task 一个分支 → PR 合并，不直接推主干。**
+  - 从主干切 `feat/issue-N-简述` / `fix/issue-N-简述`（N = `ISSUES.md` 里的条目号，让分支 ↔ PR ↔ 需求一线可追溯）。
+  - 推分支 → 开 PR。**PR 必须触发测试门禁（CI）**；门禁绿 + 人验收后 squash 合并，删分支。
+  - 合并信息引用 issue（如 `Closes #N`），并把池子条目标 ✅。
+- **纯本地仓（无远程）：直接提交主干**（开不了 PR），小步 commit 即可。
 - **Conventional Commits**：`feat / fix / refactor / test / docs / chore`，scope 可选。
-- 语义化发版 `vX.Y.Z`：`release: vX.Y.Z 摘要` → `git tag vX.Y.Z` → `git push && git push --tags`。**版本号只进 tag，不塞进日常 commit message。**
-- 有远程才 push；纯本地项目不 push、不 tag。
-- **AI 默认不擅自 commit / push / tag / reset**，除非用户明确要求。
+- 语义化发版 `vX.Y.Z`：攒够合并 → `git tag vX.Y.Z` → push tag（CI 构建发布）。**版本号只进 tag，不塞进日常 commit message。**
+- **AI 默认不擅自 commit / push / 开分支 / 合并 / tag / reset**；开分支时提议名字，用户点头再执行。
 
 ## 文件体量信号（tripwire，非红线）
 
