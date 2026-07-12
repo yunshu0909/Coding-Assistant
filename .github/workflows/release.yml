@@ -3,12 +3,15 @@ name: Build & Release
 on:
   push:
     tags: ['v*']
+  # PR 门禁（branch-per-task + PR）：合并进主干前必须测试绿
+  pull_request:
+    branches: [master, main]
 
 permissions:
   contents: write
 
 jobs:
-  # V1.9.8 发版门禁：测试红则不构建不发布
+  # 测试门禁：PR 与 tag 都跑；红则不合并 / 不构建不发布
   test:
     runs-on: macos-latest
     steps:
@@ -19,8 +22,10 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  # build/release 只在 tag push 时跑（PR 只跑上面的 test）
   build:
     needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
       matrix:
@@ -72,6 +77,7 @@ jobs:
 
   release:
     needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
 
     steps:
