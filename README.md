@@ -1,8 +1,8 @@
 # CodePal — AI 编程的幕后助手
 
-> AI 编程工具负责写代码，CodePal 负责写代码之外的一切 —— Skills 调度、账户切换、额度监控、对话回顾、跨工具统一管理。专为 **Claude Code / Codex / Cursor / Trae** 用户打造。
+> AI 编程工具负责写代码，CodePal 负责写代码之外的一切 —— Skills 调度、额度监控、对话回顾、新项目初始化与跨工具统一管理。专为 **Claude Code / Codex / Cursor / Trae** 用户打造。
 
-[![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-black?logo=apple)](https://github.com/yunshu0909/CodePal/releases) [![version](https://img.shields.io/badge/version-v1.9.3-blue)](https://github.com/yunshu0909/CodePal/releases/latest) [![license](https://img.shields.io/badge/license-ISC-green)](#license)
+[![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-black?logo=apple)](https://github.com/yunshu0909/CodePal/releases) [![version](https://img.shields.io/badge/version-v1.9.9-blue)](https://github.com/yunshu0909/CodePal/releases/latest) [![license](https://img.shields.io/badge/license-ISC-green)](#license)
 
 ---
 
@@ -11,7 +11,7 @@
 用 AI 写代码是起点，写代码之外的"管理"才是日常摩擦：
 
 - 几十个 **Skills** 要在 Claude Code / Codex / Cursor 多个工具之间同步 —— 改一处要到处改
-- **多个 Codex 账户**额度用完就得重新登录（手工 1-2 分钟，一天切 N 次）
+- Claude / Codex 的**会员额度和重置时间**分散在不同来源，难以一起观察
 - 想知道这个月 **Token 花了多少钱**、哪个模型最费
 - 找不到上次和 AI 聊过的某条历史对话，翻不到 Session 目录
 - 新项目想要标准的 `CLAUDE.md` / `.gitignore`，每次手动抄
@@ -107,7 +107,15 @@ CodePal 按使用场景分 4 组：**账户与用量 · 文档 · 技能中心 �
 
 #### 新建项目 · 标准模板一键起步
 
-选好模板 → 一键生成 `CLAUDE.md` / `.gitignore` / 记忆系统 / 可选 `git init`。不用每次从零抄。
+从一个空目录生成可被 AI 直接接管的托管 Coding 框架：
+
+- 同构的 `AGENTS.md` / `CLAUDE.md` 协作协议，分别供 Codex / Claude Code 读取
+- `MEMORY.md` + 最近 7 天每日记忆协议
+- `ISSUES.md` 唯一需求入口与 `specs/<工作单元>/` 全链路归档
+- Issue → 设计 → PRD → 测试 → branch + PR → 反馈的六环工作流
+- 通用 `.gitignore`、可选根仓 / `code/` 子仓 Git 初始化
+
+先看生成后的完整目录、教学案例与 skill 来源：[CodePal Managed Project Example](https://github.com/yunshu0909/codepal-managed-project-example)。配套 skills 的公开源码在 [云舒的 Skills Hub](https://github.com/yunshu0909/yunshu_skillshub)。
 
 #### 网络诊断
 
@@ -199,12 +207,12 @@ skill-manager/
 
 完整版本信息见 [GitHub Releases](https://github.com/yunshu0909/CodePal/releases)。
 
-**最新版本：[v1.5.3](https://github.com/yunshu0909/CodePal/releases/tag/v1.5.3)**
+**最新版本：[v1.9.9](https://github.com/yunshu0909/CodePal/releases/tag/v1.9.9)**
 
-- 🛡️ 修复远程配置防退化：旧 `pricing.cache.json` 不再覆盖新版安装包配置
-- 🔁 修复远程源 fallback：jsDelivr 返回旧版本时会继续尝试 GitHub Raw
-- 💰 补齐 GPT-5.5 定价命中链路，避免费用列因旧缓存继续显示 `--`
-- 🧪 新增 V1.5.3 专项自动化测试与 PRD/测试报告
+- 🔍 会员额度明确 Claude statusLine / Codex 本地 session 日志的数据来源与陈旧状态
+- 🌐 网络诊断改为默认零公网 IP 请求，单次检测与用户开启的持续监控分离
+- 🛡️ 延续 v1.9.8 的导航、配置写入口和敏感 token 隔离安全收口
+- 🧭 新建项目生成器使用托管 Coding 协议 v3.1，开发 task 通过 branch + PR 验收
 
 之前的里程碑版本：
 - **v1.5.2** — 稳定版发布 + 配置打包兜底 + 对话回顾恢复链路
