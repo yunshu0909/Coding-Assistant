@@ -98,6 +98,22 @@ export function BrandHead({ brand, mark, name, badge }) {
 }
 
 /**
+ * 单栏数据来源与更新机制
+ * @param {object} props
+ * @param {string} props.source - 数据来自哪里
+ * @param {string} props.update - 什么动作会产生新数据
+ * @returns {JSX.Element}
+ */
+export function SourceMeta({ source, update }) {
+  return (
+    <div className="usage-col__source" aria-label="数据来源与更新机制">
+      <span><strong>来源</strong>{source}</span>
+      <span><strong>更新</strong>{update}</span>
+    </div>
+  )
+}
+
+/**
  * 单条额度行（5h / 7d 水平进度条）
  * @param {object} props
  * @param {string} props.label - 标签
@@ -199,5 +215,5 @@ export function ColumnEmpty({
  * @returns {JSX.Element}
  */
 export function ColumnFoot({ updatedAtLabel }) {
-  return <div className="usage-col__foot">最后同步 {updatedAtLabel}</div>
+  return <div className="usage-col__foot">最后观察 {updatedAtLabel}</div>
 }

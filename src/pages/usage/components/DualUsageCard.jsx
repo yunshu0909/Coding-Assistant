@@ -50,7 +50,7 @@ export default function DualUsageCard({ claude, codex, onRefresh }) {
       </div>
 
       <footer className="dual-card__footer">
-        <span>额度来自各工具官方 rate_limits</span>
+        <span>本机读取 · 超过 2 小时未观察到新数据时标记“2 小时未更新”</span>
         <Button variant="ghost" size="sm" onClick={onRefresh} disabled={refreshing}>
           {refreshing ? '刷新中...' : '刷新状态'}
         </Button>

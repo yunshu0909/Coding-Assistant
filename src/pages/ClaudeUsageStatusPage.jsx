@@ -106,6 +106,20 @@ export default function ClaudeUsageStatusPage() {
     return ok
   }, [saveConfig])
 
+  /**
+   * Claude statusLine 接入/接管
+   * 自定义 statusLine 的 force=true 只会由二次确认弹窗触发。
+   */
+  const handleEnsureInstalled = useCallback(async (options = {}) => {
+    const ok = await ensureInstalled(options)
+    if (options.force) {
+      setToast(ok
+        ? { message: 'Claude statusLine 已由 CodePal 接管', type: 'success' }
+        : { message: '接管失败，请检查配置权限后重试', type: 'error' })
+    }
+    return ok
+  }, [ensureInstalled])
+
   const claudeCurrentCycle = buildClaudeCurrentCycle(statusState?.snapshot)
   const claudeHasTrend = statusState?.integrationState === 'ready' && Boolean(statusState?.snapshot?.hasRateLimits)
   const codexHasTrend = Boolean(codexTrend?.currentCycle) || (codexTrend?.completedCycles?.length > 0)
@@ -130,7 +144,7 @@ export default function ClaudeUsageStatusPage() {
   return (
     <PageShell
       title="会员额度"
-      subtitle="对比 Claude Code 与 Codex 的官方 rate_limits 与满载率趋势。"
+      subtitle="从 Claude Code statusLine 与 Codex 本地会话日志读取会员额度。"
       actions={headerActions}
     >
       {/* 卡片 1：会员额度双栏对比（Claude / Codex 5h+7d 当前额度） */}
@@ -141,7 +155,7 @@ export default function ClaudeUsageStatusPage() {
           installing,
           error,
           onRefresh: handleRefresh,
-          onEnsureInstalled: ensureInstalled,
+          onEnsureInstalled: handleEnsureInstalled,
         }}
         codex={{
           statusState: codexState,

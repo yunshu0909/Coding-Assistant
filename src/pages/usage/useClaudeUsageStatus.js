@@ -113,10 +113,10 @@ export default function useClaudeUsageStatus() {
   /**
    * 重试安装/修复
    * @param {{force?: boolean}} [options] - 安装选项
-   * @returns {Promise<void>}
+   * @returns {Promise<boolean>} 是否安装/接管成功
    */
   const ensureInstalled = useCallback(async (options = {}) => {
-    if (!window.electronAPI?.ensureClaudeUsageStatusInstalled) return
+    if (!window.electronAPI?.ensureClaudeUsageStatusInstalled) return false
 
     setInstalling(true)
     try {
@@ -125,14 +125,17 @@ export default function useClaudeUsageStatus() {
       if (result?.success) {
         setStatusState(result)
         setError(null)
+        return true
       } else {
         // 失败时也尽量保留 result 里的 integrationState,否则 Card 无法区分 setup_failed 和其他错误
         setStatusState(result || null)
         setError(result?.error || '安装 Claude 会员额度状态失败')
+        return false
       }
     } catch (err) {
       setStatusState(null)
       setError(err.message || '安装 Claude 会员额度状态失败')
+      return false
     } finally {
       setInstalling(false)
     }

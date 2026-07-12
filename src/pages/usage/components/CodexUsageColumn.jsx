@@ -8,7 +8,7 @@
  * @module pages/usage/components/CodexUsageColumn
  */
 
-import { BrandHead, UsageRows, ColumnEmpty, ColumnFoot, formatUpdatedAt, STALE_MS } from './usageColumnKit'
+import { BrandHead, SourceMeta, UsageRows, ColumnEmpty, ColumnFoot, formatUpdatedAt, STALE_MS } from './usageColumnKit'
 
 /**
  * 派生 Codex 渲染态
@@ -37,8 +37,8 @@ function deriveCodexRenderState(statusState, error) {
  */
 function getBadge(renderState) {
   switch (renderState) {
-    case 'ready': return { variant: 'ready', label: '已接入' }
-    case 'stale': return { variant: 'waiting', label: '数据过期' }
+    case 'ready': return { variant: 'ready', label: '已读取' }
+    case 'stale': return { variant: 'waiting', label: '2 小时未更新' }
     case 'no_data': return { variant: 'absent', label: '未检测到' }
     case 'no_rate_limits': return { variant: 'waiting', label: '无额度数据' }
     case 'read_error': return { variant: 'danger', label: '读取异常' }
@@ -65,10 +65,14 @@ export default function CodexUsageColumn({ statusState, loading, error, onRefres
   return (
     <div className={`usage-col${renderState === 'stale' ? ' usage-col--stale' : ''}`}>
       <BrandHead brand="codex" mark="Cx" name="Codex" badge={badge} />
+      <SourceMeta
+        source="本地 session 日志"
+        update="运行 Codex 产生新日志时"
+      />
 
       {renderState === 'stale' && (
         <div className="usage-col__stale-note">
-          ⚠ 数据可能已过期 — 最后同步于 {updatedAtLabel}，用一次 Codex 即自动刷新。
+          ⚠ 最近 2 小时没有观察到新额度数据。最后观察于 {updatedAtLabel}；当前数值可能仍有效，使用一次 Codex 后可更新。
         </div>
       )}
 

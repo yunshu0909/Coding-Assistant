@@ -10,7 +10,9 @@
  * @module pages/usage/components/ClaudeUsageColumn
  */
 
-import { BrandHead, UsageRows, ColumnEmpty, ColumnFoot, formatUpdatedAt, STALE_MS } from './usageColumnKit'
+import { useState } from 'react'
+import ClaudeStatusLineTakeoverModal from './ClaudeStatusLineTakeoverModal'
+import { BrandHead, SourceMeta, UsageRows, ColumnEmpty, ColumnFoot, formatUpdatedAt, STALE_MS } from './usageColumnKit'
 
 /**
  * 派生 Claude 渲染态（沿用原 ClaudeUsageStatusCard.deriveRenderState）
@@ -50,7 +52,7 @@ function getBadge(renderState) {
   switch (renderState) {
     case 'ready':
     case 'off_with_data': return { variant: 'ready', label: '已接入' }
-    case 'stale': return { variant: 'waiting', label: '数据过期' }
+    case 'stale': return { variant: 'waiting', label: '2 小时未更新' }
     case 'waiting_first_data': return { variant: 'waiting', label: '等待数据' }
     case 'no_rate_limits': return { variant: 'waiting', label: '无额度数据' }
     case 'conflict': return { variant: 'danger', label: '检测到自定义配置' }
@@ -74,6 +76,7 @@ function getBadge(renderState) {
  * @returns {JSX.Element}
  */
 export default function ClaudeUsageColumn({ statusState, loading, installing, error, onRefresh, onEnsureInstalled }) {
+  const [takeoverOpen, setTakeoverOpen] = useState(false)
   const renderState = deriveRenderState(statusState, error)
   const badge = getBadge(renderState)
   const snapshot = statusState?.snapshot || null
@@ -83,6 +86,10 @@ export default function ClaudeUsageColumn({ statusState, loading, installing, er
   return (
     <div className={`usage-col${renderState === 'stale' ? ' usage-col--stale' : ''}`}>
       <BrandHead brand="claude" mark="C" name="Claude Code" badge={badge} />
+      <SourceMeta
+        source="statusLine rate_limits 快照"
+        update="运行 Claude Code 对话时"
+      />
 
       {renderState === 'off_with_data' && (
         <div className="usage-col__hint">⏸ 状态栏显示已关闭 · 本页数据照常实时同步</div>
@@ -90,7 +97,7 @@ export default function ClaudeUsageColumn({ statusState, loading, installing, er
 
       {renderState === 'stale' && (
         <div className="usage-col__stale-note">
-          ⚠ 数据可能已过期 — 最后同步于 {updatedAtLabel}，打开 Claude Code 对话即可自动刷新。
+          ⚠ 最近 2 小时没有观察到新额度数据。最后观察于 {updatedAtLabel}；当前数值可能仍有效，打开 Claude Code 对话后可更新。
         </div>
       )}
 
@@ -133,7 +140,7 @@ export default function ClaudeUsageColumn({ statusState, loading, installing, er
           icon="⚡"
           iconVariant="primary"
           title="一键接入会员额度"
-          desc={<>CodePal 自动配置 Claude Code 状态栏脚本，无需手改 settings.json。</>}
+          desc={<>点击后 CodePal 才会配置 Claude Code 状态栏脚本，不会因打开本页自动写入 settings.json。</>}
           primaryLabel={installing ? '处理中...' : '立即接入'}
           primaryLoading={installing}
           onPrimary={() => onEnsureInstalled?.({ force: false })}
@@ -145,11 +152,10 @@ export default function ClaudeUsageColumn({ statusState, loading, installing, er
           icon="⚠"
           iconVariant="warning"
           title="检测到已有自定义 statusLine"
-          desc={<>你的 settings.json 已配置状态栏脚本。接管前会先备份旧配置。</>}
-          primaryLabel={installing ? '处理中...' : '接管并安装'}
+          desc={<>CodePal 不会自动覆盖你的状态栏脚本。查看接管说明并再次确认后，才会备份并替换配置。</>}
+          primaryLabel="查看接管说明"
           primaryLoading={installing}
-          onPrimary={() => onEnsureInstalled?.({ force: true })}
-          hint="备份:settings.json.codepal-backup-<时间戳>"
+          onPrimary={() => setTakeoverOpen(true)}
         />
       )}
 
@@ -157,7 +163,7 @@ export default function ClaudeUsageColumn({ statusState, loading, installing, er
         <ColumnEmpty
           icon="○"
           title="本机未安装 Claude Code"
-          desc={<>安装 Claude Code CLI 后回来刷新，系统会自动接入。</>}
+          desc={<>安装 Claude Code CLI 后回来刷新，再由你确认是否接入会员额度。</>}
           primaryLabel={loading ? '刷新中...' : '刷新状态'}
           primaryLoading={loading}
           onPrimary={onRefresh}
@@ -189,6 +195,13 @@ export default function ClaudeUsageColumn({ statusState, loading, installing, er
           hint={error ? `错误详情:${error}` : undefined}
         />
       )}
+
+      <ClaudeStatusLineTakeoverModal
+        open={takeoverOpen}
+        loading={installing}
+        onClose={() => setTakeoverOpen(false)}
+        onConfirm={() => onEnsureInstalled?.({ force: true })}
+      />
     </div>
   )
 }
