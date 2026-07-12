@@ -10,6 +10,7 @@
 
 const {
   probeAllEndpoints,
+  probeIpOnce,
   getIpMonitorState,
   setIpMonitorFastMode,
   toggleIpMonitor,
@@ -29,7 +30,19 @@ function registerNetworkDiagnosticsHandlers({ ipcMain }) {
   })
 
   /**
-   * 切换采样频率（页面打开=5秒，离开=30秒）
+   * 按需执行一次公网 IP 检测，不改变持续监控开关、不创建定时器
+   */
+  ipcMain.handle('network:probeIpOnce', async () => {
+    try {
+      const data = await probeIpOnce()
+      return { success: true, data, error: null }
+    } catch (error) {
+      return { success: false, data: getIpMonitorState(), error: error.message }
+    }
+  })
+
+  /**
+   * 切换采样频率（页面打开=5秒，离开=60秒）；关闭时不建 timer
    */
   ipcMain.handle('network:setIpMonitorFastMode', (_event, fast) => {
     setIpMonitorFastMode(fast)
@@ -37,11 +50,15 @@ function registerNetworkDiagnosticsHandlers({ ipcMain }) {
   })
 
   /**
-   * 暂停/恢复 IP 监控（开关按钮）
+   * 开启/关闭持续监控（开关按钮，同时持久化）
    */
   ipcMain.handle('network:toggleIpMonitor', (_event, enabled) => {
-    toggleIpMonitor(enabled)
-    return { success: true, data: getIpMonitorState(), error: null }
+    try {
+      toggleIpMonitor(enabled)
+      return { success: true, data: getIpMonitorState(), error: null }
+    } catch (error) {
+      return { success: false, data: getIpMonitorState(), error: error.message }
+    }
   })
 
   /**

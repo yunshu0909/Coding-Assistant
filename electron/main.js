@@ -67,7 +67,7 @@ const { registerSessionResumeHandlers } = require('./handlers/registerSessionRes
 const { registerDocBrowserHandlers } = require('./handlers/registerDocBrowserHandlers')
 const { registerK28StatusLightHandlers } = require('./handlers/registerK28StatusLightHandlers')
 const { initDocBrowserStore } = require('./services/docBrowserService')
-const { startIpMonitor } = require('./services/networkDiagnosticsService')
+const { initializeIpMonitor, setIpMonitorFastMode } = require('./services/networkDiagnosticsService')
 const { registerRepoWatcherHandlers } = require('./handlers/registerRepoWatcherHandlers')
 const { attachNavigationGuard, registerNavigationGuardHandlers } = require('./services/navigationGuardService')
 const { resolveProviderRegistryFilePath } = require('./services/providerRegistryPathService')
@@ -150,6 +150,13 @@ function createWindow() {
     devServerUrl: process.env.VITE_DEV_SERVER_URL,
   })
 
+  // macOS 关闭最后窗口后主进程仍存活；不能只依赖 renderer cleanup 降频。
+  // 窗口销毁时强制切回后台 60 秒，但不改变用户的持续监控开关。
+  mainWindow.on('closed', () => {
+    setIpMonitorFastMode(false)
+    mainWindow = null
+  })
+
   // Load the app
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
@@ -223,8 +230,8 @@ app.whenReady().then(async () => {
     console.warn('[app-update] startup check failed:', error?.message || error)
   })
 
-  // 启动 IP 后台监控（应用启动即运行，30 秒采样）
-  startIpMonitor(() => mainWindow)
+  // 恢复用户明确选择的持续监控；默认关闭时不会发起公网 IP 请求。
+  initializeIpMonitor({ store, getWindow: () => mainWindow })
 
   // 启动中央仓库文件监听（方向 1：中央→工具自动推送）
   let initialRepoPath = '~/Documents/SkillManager/'

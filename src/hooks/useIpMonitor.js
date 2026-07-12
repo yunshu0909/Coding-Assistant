@@ -4,8 +4,8 @@
  * 负责：
  * - 页面挂载时从主进程拉取已有监控状态
  * - 订阅主进程推送的实时采样更新
- * - 页面打开时切换到快速模式（5 秒），离开时回到后台模式（30 秒）
- * - 提供开关控制（暂停/恢复监控）
+ * - 页面打开时切换到快速模式（5 秒），离开时回到后台模式（60 秒）
+ * - 提供单次检测与持续监控开关
  *
  * IP 采样定时器运行在主进程，本 Hook 只做数据订阅和展示。
  *
@@ -20,6 +20,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
  */
 export default function useIpMonitor(onToast) {
   const [state, setState] = useState(null)
+  const [probing, setProbing] = useState(false)
   const onToastRef = useRef(onToast)
   onToastRef.current = onToast
   const hasShownFailToastRef = useRef(false)
@@ -72,16 +73,40 @@ export default function useIpMonitor(onToast) {
     }
   }, [])
 
-  const toggle = useCallback(async () => {
+  const probeOnce = useCallback(async () => {
+    if (!window.electronAPI?.probeIpOnce || probing) return
+    setProbing(true)
+    try {
+      const response = await window.electronAPI.probeIpOnce()
+      if (response.success) {
+        stateRef.current = response.data
+        setState(response.data)
+      } else {
+        onToastRef.current('公网 IP 检测失败，请检查网络连接', 'error')
+      }
+    } catch {
+      onToastRef.current('公网 IP 检测失败，请检查网络连接', 'error')
+    } finally {
+      setProbing(false)
+    }
+  }, [probing])
+
+  const toggle = useCallback(async (enabled) => {
     if (!stateRef.current) return
-    const newEnabled = !stateRef.current.isEnabled
-    const response = await window.electronAPI.toggleIpMonitor(newEnabled)
-    if (response.success) {
-      stateRef.current = response.data
-      setState(response.data)
-      hasShownFailToastRef.current = false
+    const newEnabled = typeof enabled === 'boolean' ? enabled : !stateRef.current.isEnabled
+    try {
+      const response = await window.electronAPI.toggleIpMonitor(newEnabled)
+      if (response.success) {
+        stateRef.current = response.data
+        setState(response.data)
+        hasShownFailToastRef.current = false
+      } else {
+        onToastRef.current('无法保存持续监控设置，请重试', 'error')
+      }
+    } catch {
+      onToastRef.current('无法保存持续监控设置，请重试', 'error')
     }
   }, [])
 
-  return { state, toggle }
+  return { state, probing, probeOnce, toggle }
 }
