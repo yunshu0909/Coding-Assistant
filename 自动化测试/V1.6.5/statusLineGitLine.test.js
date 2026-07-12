@@ -412,14 +412,15 @@ describe('模块D 双层git端到端', () => {
 // ───────── 贯穿 · 安全 ─────────
 describe('贯穿安全', () => {
   it('TC-901 第一行逐字节零改动（含满血四段）', () => {
-    // 基线脚本 = git HEAD 上的 .tpl 经同法渲染（隔离）
+    // v1.9.10 是最后一个携带 v7 statusLine 的 release；用不可变 tag 做真实旧版基线，
+    // 避免工作分支提交后 HEAD 已变成 v8，导致“当前版本与自身比较”的假对照。
     const tplRel = 'electron/services/claudeUsageStatusScript.tpl'
-    const baseTpl = execFileSync('git', ['-C', path.resolve(__dirname, '../..'), 'show', `HEAD:${tplRel}`], { encoding: 'utf8' })
+    const baseTpl = execFileSync('git', ['-C', path.resolve(__dirname, '../..'), 'show', `v1.9.10:${tplRel}`], { encoding: 'utf8' })
     let bs = baseTpl
       .replace(/__SCRIPT_VERSION__/g, '6')
       .split('__CONFIG_PATH__').join(path.join(TMP, 'cfg.json'))
       .split('__SNAPSHOT_PATH__').join(path.join(TMP, 'snap.json'))
-      // HEAD 基线仍是带历史采集的 v7 模板，必须完整渲染旧占位符后再比较第一行。
+      // v7 基线仍带历史采集，必须完整渲染旧占位符后再比较第一行。
       .split('__HISTORY_PATH__').join(path.join(TMP, 'hist.json'))
       .replace(/__MAX_COMPLETED_CYCLES__/g, '13')
     const baseSh = path.join(TMP, 'base.sh')

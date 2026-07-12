@@ -30,8 +30,6 @@ CodePal 按使用场景分 4 组：**账户与用量 · 文档 · 技能中心 �
 
 #### Claude 会员额度 · 状态栏双向同步
 
-![Claude Usage](docs/screenshots/claude-usage.png)
-
 读取 Claude Code statusLine 与 Codex 本地 session 日志中的 `rate_limits`，展示 5h / 7d 当前额度与距重置时间；Claude 数据可配置到 Claude Code 底部状态栏。
 
 - 色阶断点：&lt;60% 绿 / 60-85% 黄 / ≥85% 红

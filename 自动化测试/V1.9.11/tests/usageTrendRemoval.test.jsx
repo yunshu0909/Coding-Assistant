@@ -5,12 +5,17 @@
  */
 
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import ClaudeUsageStatusPage from '../../../src/pages/ClaudeUsageStatusPage'
 
 const readSource = (relativePath) => fs.readFileSync(path.join(process.cwd(), relativePath), 'utf8')
+const require = createRequire(import.meta.url)
+const claudeUsageService = require('../../../electron/services/claudeUsageStatusService')
 
 afterEach(() => {
   cleanup()
@@ -49,6 +54,42 @@ describe('V1.9.11 满载率趋势下线', () => {
     expect(template).not.toContain('__HISTORY_PATH__')
     expect(template).not.toContain('update_history')
     expect(template).toContain('write_snapshot(snapshot)')
+  })
+
+  it('RM-TC-02b: 真实运行 v8 只更新快照，不修改已有 history 文件', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codepal-v1911-statusline-'))
+    try {
+      const configPath = path.join(tempDir, 'config.json')
+      const snapshotPath = path.join(tempDir, 'snapshot.json')
+      const historyPath = path.join(tempDir, 'codepal-usage-history.json')
+      const scriptPath = path.join(tempDir, 'statusline.sh')
+      const originalHistory = '{"version":1,"completedCycles":[{"peakPercentage":88}]}\n'
+      fs.writeFileSync(configPath, '{"displayMode":"always","fiveHourThreshold":70,"sevenDayThreshold":70}\n')
+      fs.writeFileSync(historyPath, originalHistory)
+      const historyMtimeBefore = fs.statSync(historyPath).mtimeMs
+
+      const script = claudeUsageService.buildStatusScriptContent()
+        .split(claudeUsageService.STATUS_CONFIG_PATH).join(configPath)
+        .split(claudeUsageService.STATUS_SNAPSHOT_PATH).join(snapshotPath)
+      fs.writeFileSync(scriptPath, script, { mode: 0o700 })
+
+      const now = Math.floor(Date.now() / 1000)
+      const payload = JSON.stringify({
+        model: { display_name: 'Claude Code', id: 'claude-test' },
+        rate_limits: {
+          five_hour: { used_percentage: 21, resets_at: now + 3600 },
+          seven_day: { used_percentage: 34, resets_at: now + 86400 },
+        },
+      })
+      const result = spawnSync('bash', [scriptPath], { input: payload, encoding: 'utf8' })
+
+      expect(result.status, result.stderr).toBe(0)
+      expect(JSON.parse(fs.readFileSync(snapshotPath, 'utf8')).sevenDayUsedPercentage).toBe(34)
+      expect(fs.readFileSync(historyPath, 'utf8')).toBe(originalHistory)
+      expect(fs.statSync(historyPath).mtimeMs).toBe(historyMtimeBefore)
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
   })
 
   it('RM-TC-03: 页面只请求当前额度，Claude/Codex 双栏继续展示', async () => {
@@ -101,4 +142,3 @@ describe('V1.9.11 满载率趋势下线', () => {
     expect(getCodexUsageTrend).not.toHaveBeenCalled()
   })
 })
-
