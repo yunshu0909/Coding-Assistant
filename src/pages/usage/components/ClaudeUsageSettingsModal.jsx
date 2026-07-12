@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react'
 import Modal from '../../../components/Modal/Modal'
 import Button from '../../../components/Button/Button'
+import './ClaudeUsageSettingsModal.css'
 
 /**
  * 默认配置（open 时若未提供 initialConfig 的保底）
