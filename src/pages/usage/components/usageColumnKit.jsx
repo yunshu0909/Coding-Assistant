@@ -11,10 +11,32 @@
  * @module pages/usage/components/usageColumnKit
  */
 
+import { useEffect, useState } from 'react'
 import Button from '../../../components/Button/Button'
 
 // 快照过期阈值：与 Claude 卡严格一致（2 小时）。没用工具时数据本就不会变，2h 是合理的"有点旧了"信号。
 export const STALE_MS = 2 * 60 * 60 * 1000
+
+/**
+ * 在快照严格超过 stale 阈值的第一毫秒触发一次重渲染。
+ * 页面长时保持打开时，不依赖用户手动刷新才更新新鲜度。
+ *
+ * @param {number|string|null|undefined} updatedAt - 快照 Unix 秒
+ */
+export function useStaleDeadline(updatedAt) {
+  const [, setDeadlineTick] = useState(0)
+
+  useEffect(() => {
+    const updatedAtMs = Number(updatedAt) * 1000
+    if (!Number.isFinite(updatedAtMs) || updatedAtMs <= 0) return undefined
+
+    const delayMs = updatedAtMs + STALE_MS - Date.now() + 1
+    if (delayMs <= 0) return undefined
+
+    const timerId = setTimeout(() => setDeadlineTick((tick) => tick + 1), delayMs)
+    return () => clearTimeout(timerId)
+  }, [updatedAt])
+}
 
 // 颜色断点与 claudeUsageStatusService.js 的 color_pct 严格对齐：<60 绿 / 60-85 黄 / ≥85 红
 const PCT_WARNING_THRESHOLD = 60
@@ -93,6 +115,22 @@ export function BrandHead({ brand, mark, name, badge }) {
       <span className="usage-col__name">{name}</span>
       <span className="usage-col__spacer" />
       <span className={`usage-badge usage-badge--${badge.variant}`}>{badge.label}</span>
+    </div>
+  )
+}
+
+/**
+ * 单栏数据来源与更新机制
+ * @param {object} props
+ * @param {string} props.source - 数据来自哪里
+ * @param {string} props.update - 什么动作会产生新数据
+ * @returns {JSX.Element}
+ */
+export function SourceMeta({ source, update }) {
+  return (
+    <div className="usage-col__source" aria-label="数据来源与更新机制">
+      <span><strong>来源</strong>{source}</span>
+      <span><strong>更新</strong>{update}</span>
     </div>
   )
 }
@@ -199,5 +237,5 @@ export function ColumnEmpty({
  * @returns {JSX.Element}
  */
 export function ColumnFoot({ updatedAtLabel }) {
-  return <div className="usage-col__foot">最后同步 {updatedAtLabel}</div>
+  return <div className="usage-col__foot">最后观察 {updatedAtLabel}</div>
 }
