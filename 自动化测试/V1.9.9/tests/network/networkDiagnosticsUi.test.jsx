@@ -111,6 +111,7 @@ describe('V1.9.9 network diagnostics UI', () => {
     expect(screen.getByText('203.0.113.7')).toBeInTheDocument()
     expect(screen.getByText('via ipify')).toBeInTheDocument()
     expect(screen.getByText('单次检测完成', { exact: false })).toBeInTheDocument()
+    expect(screen.getByText('最后检测', { exact: false })).toBeInTheDocument()
     expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'false')
   })
 

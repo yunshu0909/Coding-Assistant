@@ -71,6 +71,11 @@ export default function IpMonitorCard({ onToast }) {
   const roundMin = Math.floor(roundElapsedMs / 60000)
   const roundSec = Math.floor((roundElapsedMs % 60000) / 1000)
   const successRate = state.sampleCount > 0 ? Math.round((state.successCount / state.sampleCount) * 100) : 0
+  const lastCheckedLabel = state.lastCheckedAt
+    ? new Date(state.lastCheckedAt).toLocaleTimeString('zh-CN', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    })
+    : null
 
   return (
     <div className="nd-card" style={{ height: '100%' }}>
@@ -192,6 +197,9 @@ export default function IpMonitorCard({ onToast }) {
           </>
         ) : (
           <span className="nd-running-text">单次检测完成 · 未开启持续监控</span>
+        )}
+        {lastCheckedLabel && (
+          <span className="nd-running-text">最后检测 {lastCheckedLabel}</span>
         )}
       </div>
     </div>

@@ -422,7 +422,7 @@ function createNetworkDiagnosticsService({
     if (!monitorState.isEnabled && !allowWhenDisabled) return getState()
     if (samplePromise) return samplePromise
 
-    const startedAsContinuous = monitorState.isEnabled && !allowWhenDisabled
+    const startedWhileEnabled = monitorState.isEnabled
     monitorState.status = 'detecting'
     emitState()
 
@@ -435,8 +435,9 @@ function createNetworkDiagnosticsService({
       }
       handleSampleResult(result)
 
-      // 持续采样过程中被用户关闭：结果可以保留，但状态必须保持“已停止”。
-      if (startedAsContinuous && !monitorState.isEnabled) {
+      // 不论是 interval 还是用户手动单次检测，只要请求发出时开关为开、
+      // 完成前被关闭，结果可保留，但状态不能从 off 反弹为 stable/failed。
+      if (startedWhileEnabled && !monitorState.isEnabled) {
         monitorState.status = monitorState.currentIp || monitorState.sampleCount > 0 ? 'off' : 'idle'
       }
       emitState()

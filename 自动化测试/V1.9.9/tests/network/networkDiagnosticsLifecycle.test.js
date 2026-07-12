@@ -88,6 +88,8 @@ describe('V1.9.9 network diagnostics lifecycle', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'electron/main.js'), 'utf8')
     expect(source).toContain('initializeIpMonitor({ store, getWindow: () => mainWindow })')
     expect(source).not.toMatch(/\b(startIpMonitor|probeIpOnce|probeAllEndpoints)\s*\(/)
+    expect(source).toContain("mainWindow.on('closed'")
+    expect(source).toContain('setIpMonitorFastMode(false)')
   })
 
   it('N-TC-02: 偏好读取失败时安全保持关闭', () => {
@@ -193,6 +195,28 @@ describe('V1.9.9 network diagnostics lifecycle', () => {
     expect(state.switchCount).toBe(0)
     expect(state.timeline).toHaveLength(1)
     expect(state.lastCheckedAt).toBe(Date.parse('2026-07-12T12:00:00+08:00'))
+  })
+
+  it('N-TC-06b: 手动检测进行中关闭监控后状态保持 off', async () => {
+    let resolveManualProbe
+    const probe = createProbe()
+    const { service, scheduler } = makeService({ probe })
+    service.initialize()
+    service.setContinuousMonitoring(true)
+    await flushSample(service)
+    await Promise.resolve()
+    probe.mockImplementationOnce(() => new Promise((resolve) => { resolveManualProbe = resolve }))
+
+    const pending = service.probeIpOnce()
+    await vi.waitFor(() => expect(service.getState().status).toBe('detecting'))
+    service.setContinuousMonitoring(false)
+    resolveManualProbe({ success: true, ip: '203.0.113.8', source: 'icanhazip' })
+    const state = await pending
+
+    expect(state.isEnabled).toBe(false)
+    expect(state.status).toBe('off')
+    expect(state.currentIp).toBe('203.0.113.8')
+    expect(scheduler.active.size).toBe(0)
   })
 
   it('N-TC-07: 初始化只在持久化值严格为 true 时恢复', async () => {
