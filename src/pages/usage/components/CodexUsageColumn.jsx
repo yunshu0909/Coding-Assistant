@@ -8,7 +8,7 @@
  * @module pages/usage/components/CodexUsageColumn
  */
 
-import { BrandHead, SourceMeta, UsageRows, ColumnEmpty, ColumnFoot, formatUpdatedAt, STALE_MS } from './usageColumnKit'
+import { BrandHead, SourceMeta, UsageRows, ColumnEmpty, ColumnFoot, formatUpdatedAt, STALE_MS, useStaleDeadline } from './usageColumnKit'
 
 /**
  * 派生 Codex 渲染态
@@ -56,6 +56,7 @@ function getBadge(renderState) {
  * @returns {JSX.Element}
  */
 export default function CodexUsageColumn({ statusState, loading, error, onRefresh }) {
+  useStaleDeadline(statusState?.snapshot?.updatedAt)
   const renderState = deriveCodexRenderState(statusState, error)
   const badge = getBadge(renderState)
   const snapshot = statusState?.snapshot || null

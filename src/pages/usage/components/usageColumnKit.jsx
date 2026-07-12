@@ -11,10 +11,32 @@
  * @module pages/usage/components/usageColumnKit
  */
 
+import { useEffect, useState } from 'react'
 import Button from '../../../components/Button/Button'
 
 // 快照过期阈值：与 Claude 卡严格一致（2 小时）。没用工具时数据本就不会变，2h 是合理的"有点旧了"信号。
 export const STALE_MS = 2 * 60 * 60 * 1000
+
+/**
+ * 在快照严格超过 stale 阈值的第一毫秒触发一次重渲染。
+ * 页面长时保持打开时，不依赖用户手动刷新才更新新鲜度。
+ *
+ * @param {number|string|null|undefined} updatedAt - 快照 Unix 秒
+ */
+export function useStaleDeadline(updatedAt) {
+  const [, setDeadlineTick] = useState(0)
+
+  useEffect(() => {
+    const updatedAtMs = Number(updatedAt) * 1000
+    if (!Number.isFinite(updatedAtMs) || updatedAtMs <= 0) return undefined
+
+    const delayMs = updatedAtMs + STALE_MS - Date.now() + 1
+    if (delayMs <= 0) return undefined
+
+    const timerId = setTimeout(() => setDeadlineTick((tick) => tick + 1), delayMs)
+    return () => clearTimeout(timerId)
+  }, [updatedAt])
+}
 
 // 颜色断点与 claudeUsageStatusService.js 的 color_pct 严格对齐：<60 绿 / 60-85 黄 / ≥85 红
 const PCT_WARNING_THRESHOLD = 60

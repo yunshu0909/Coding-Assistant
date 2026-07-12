@@ -179,4 +179,28 @@ describe.sequential('V1.9.9 Claude statusLine ownership', () => {
     expect(result.errorCode).toBe(errorCode)
     expect(after.statusLine.command).toBe(original.statusLine.command)
   })
+
+  it('Q-TC-10c: 静默升级写入前所有权变为自定义时拒绝覆盖', async () => {
+    const { usageModule } = loadModuleWithHome(tempHome)
+    const settingsService = createSettingsService(settingsPath)
+    const service = usageModule.createClaudeUsageStatusService({ pathExists, claudeSettingsService: settingsService })
+    await fs.writeFile(service.scriptPath, '# codepal-script-version: 1\n', { mode: 0o700 })
+    await fs.writeFile(settingsPath, `${JSON.stringify({
+      statusLine: { type: 'command', command: usageModule.MANAGED_STATUS_COMMAND },
+    })}\n`, 'utf8')
+
+    const observed = await service.getUsageStatusState()
+    expect(observed.usesManagedStatusLine).toBe(true)
+    expect(observed.scriptOutdated).toBe(true)
+
+    const customCommand = 'bash "/tmp/changed-after-read.sh"'
+    await fs.writeFile(settingsPath, `${JSON.stringify({
+      statusLine: { type: 'command', command: customCommand },
+    })}\n`, 'utf8')
+
+    const result = await service.ensureUsageStatusInstalled({ force: false })
+    const after = JSON.parse(await fs.readFile(settingsPath, 'utf8'))
+    expect(result.integrationState).toBe('conflict')
+    expect(after.statusLine.command).toBe(customCommand)
+  })
 })

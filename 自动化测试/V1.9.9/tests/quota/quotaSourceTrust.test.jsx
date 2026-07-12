@@ -7,7 +7,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, renderHook, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, renderHook, waitFor, act } from '@testing-library/react'
 import ClaudeUsageColumn from '../../../../src/pages/usage/components/ClaudeUsageColumn'
 import CodexUsageColumn from '../../../../src/pages/usage/components/CodexUsageColumn'
 import DualUsageCard from '../../../../src/pages/usage/components/DualUsageCard'
@@ -117,6 +117,21 @@ describe('V1.9.9 会员额度来源与 stale', () => {
     rerender(<ClaudeUsageColumn statusState={makeClaudeState(NOW_SECONDS)} loading={false} />)
     expect(screen.queryByText('2 小时未更新')).not.toBeInTheDocument()
     expect(screen.getByText('已接入')).toBeInTheDocument()
+  })
+
+  it('Q-TC-04c: 页面保持打开跨过 2 小时后自动进入 stale', () => {
+    render(
+      <>
+        <ClaudeUsageColumn statusState={makeClaudeState(NOW_SECONDS)} loading={false} />
+        <CodexUsageColumn statusState={makeCodexState(NOW_SECONDS)} loading={false} />
+      </>
+    )
+
+    act(() => vi.advanceTimersByTime(2 * 60 * 60 * 1000))
+    expect(screen.queryByText('2 小时未更新')).not.toBeInTheDocument()
+
+    act(() => vi.advanceTimersByTime(1))
+    expect(screen.getAllByText('2 小时未更新')).toHaveLength(2)
   })
 
   it('Q-TC-01b: 无额度数据和读取异常仍展示来源', () => {
@@ -256,7 +271,7 @@ describe('V1.9.9 Claude 接入所有权交互', () => {
     const { result } = renderHook(() => useClaudeUsageStatus())
     await waitFor(() => expect(result.current.loading).toBe(false))
     await waitFor(() => expect(ensure).toHaveBeenCalledTimes(1))
-    expect(ensure).toHaveBeenCalledWith({ force: true })
+    expect(ensure).toHaveBeenCalledWith({ force: false })
   })
 
   it.each([

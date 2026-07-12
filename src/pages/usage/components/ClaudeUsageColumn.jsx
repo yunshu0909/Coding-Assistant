@@ -12,7 +12,7 @@
 
 import { useState } from 'react'
 import ClaudeStatusLineTakeoverModal from './ClaudeStatusLineTakeoverModal'
-import { BrandHead, SourceMeta, UsageRows, ColumnEmpty, ColumnFoot, formatUpdatedAt, STALE_MS } from './usageColumnKit'
+import { BrandHead, SourceMeta, UsageRows, ColumnEmpty, ColumnFoot, formatUpdatedAt, STALE_MS, useStaleDeadline } from './usageColumnKit'
 
 /**
  * 派生 Claude 渲染态（沿用原 ClaudeUsageStatusCard.deriveRenderState）
@@ -77,6 +77,7 @@ function getBadge(renderState) {
  */
 export default function ClaudeUsageColumn({ statusState, loading, installing, error, onRefresh, onEnsureInstalled }) {
   const [takeoverOpen, setTakeoverOpen] = useState(false)
+  useStaleDeadline(statusState?.snapshot?.updatedAt)
   const renderState = deriveRenderState(statusState, error)
   const badge = getBadge(renderState)
   const snapshot = statusState?.snapshot || null
