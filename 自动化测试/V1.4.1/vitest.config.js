@@ -2,7 +2,7 @@
  * V1.4.1 前端单元测试配置
  *
  * 负责：
- * - 指定 ClaudeUsageTrendCard 等前端组件测试范围
+ * - 指定会员额度页面、设置弹窗与 hook 的前端测试范围
  * - 使用 jsdom 环境以支持 @testing-library/react 渲染
  * - 配置 React 插件与 @ 别名，支持 JSX 与源码路径解析
  *

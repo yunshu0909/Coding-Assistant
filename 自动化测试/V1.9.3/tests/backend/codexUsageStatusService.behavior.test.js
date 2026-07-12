@@ -23,8 +23,6 @@ const {
   toResetUnixSeconds,
   getLatestCodexRateLimits,
   getCodexUsageStatusState,
-  getCodexUsageTrend,
-  weekStartUnix,
 } = require('../../../../electron/services/codexUsageStatusService')
 const { parseCodexRateLimits } = require('../../../../electron/services/usageLogScanService')
 
@@ -223,73 +221,5 @@ describe('getCodexUsageStatusState 状态机', () => {
     const r = await getCodexUsageStatusState({ ...baseDeps, scanLogFilesInRangeFn: throwingScan })
     expect(r.success).toBe(false)
     expect(r.integrationState).toBe('read_error')
-  })
-})
-
-describe('weekStartUnix', () => {
-  it('返回所在周的周一 00:00（本地时区）', () => {
-    const ws = weekStartUnix(Date.parse('2026-06-03T12:00:00'))
-    const d = new Date(ws * 1000)
-    expect(d.getDay()).toBe(1) // 周一
-    expect(d.getHours()).toBe(0)
-    expect(d.getMinutes()).toBe(0)
-    expect(d.getSeconds()).toBe(0)
-  })
-
-  it('对周一零点幂等', () => {
-    const ws = weekStartUnix(Date.parse('2026-06-03T12:00:00'))
-    expect(weekStartUnix(ws * 1000)).toBe(ws)
-  })
-})
-
-describe('getCodexUsageTrend 自然周聚合', () => {
-  const NOW = Date.parse('2026-06-03T12:00:00') // 周中，避免跨周边界
-
-  /** 造一条带 secondary.used_percent 的 token_count 行 */
-  function trendLine(tsMs, used) {
-    return JSON.stringify({
-      type: 'event_msg',
-      timestamp: new Date(tsMs).toISOString(),
-      payload: { type: 'token_count', info: { total_token_usage: {} }, rate_limits: { secondary: { used_percent: used, window_minutes: 10080, resets_at: 1 } } },
-    })
-  }
-
-  function depsWith(lines) {
-    return {
-      homeDir: '/tmp/fake-home',
-      pathExistsFn: async () => true,
-      now: NOW,
-      scanLogFilesInRangeFn: async () => ({ files: [{ path: 'a.jsonl', mtime: '', lines }], totalMatched: 1, scannedCount: 1, truncated: false }),
-    }
-  }
-
-  it('sessions 不存在 → 空趋势', async () => {
-    const r = await getCodexUsageTrend({ homeDir: '/tmp/fake-home', pathExistsFn: async () => false, now: NOW })
-    expect(r.success).toBe(true)
-    expect(r.currentCycle).toBeNull()
-    expect(r.completedCycles).toEqual([])
-  })
-
-  it('本周取峰值，上周入已完成', async () => {
-    const lines = [trendLine(NOW, 30), trendLine(NOW, 45), trendLine(NOW - 7 * 864e5, 80)]
-    const r = await getCodexUsageTrend(depsWith(lines))
-    expect(r.currentCycle.peakPercentage).toBe(45) // 本周 max(30,45)
-    expect(r.completedCycles.length).toBe(1)
-    expect(r.completedCycles[0].peakPercentage).toBe(80)
-  })
-
-  it('已完成周期周期长度为 7 天', async () => {
-    const r = await getCodexUsageTrend(depsWith([trendLine(NOW, 30)]))
-    expect(r.currentCycle.periodEnd - r.currentCycle.periodStart).toBe(7 * 86400)
-  })
-
-  it('多周降序排列', async () => {
-    const lines = [
-      trendLine(NOW - 7 * 864e5, 80),
-      trendLine(NOW - 14 * 864e5, 60),
-      trendLine(NOW - 21 * 864e5, 40),
-    ]
-    const r = await getCodexUsageTrend(depsWith(lines))
-    expect(r.completedCycles.map((c) => c.peakPercentage)).toEqual([80, 60, 40])
   })
 })

@@ -4,7 +4,6 @@
  * 负责：
  * - 作为 Claude Code 专属能力的独立页面入口
  * - 展示 Claude Code 会员额度接入状态与最近一次快照
- * - v1.4.1：新增满载率趋势卡，展示最近 4 个已完成 7d 周期的峰值与平均值
  * - v1.4.1：显示设置从独立卡片迁移至弹窗（齿轮按钮触发）
  * - 保存配置后 Toast 提示成功/失败
  *
@@ -16,7 +15,6 @@ import PageShell from '../components/PageShell'
 import Button from '../components/Button/Button'
 import Toast from '../components/Toast'
 import DualUsageCard from './usage/components/DualUsageCard'
-import DualTrendCard from './usage/components/DualTrendCard'
 import ClaudeUsageSettingsModal from './usage/components/ClaudeUsageSettingsModal'
 import useClaudeUsageStatus from './usage/useClaudeUsageStatus'
 import useCodexUsageStatus from './usage/useCodexUsageStatus'
@@ -33,23 +31,6 @@ const SETTINGS_DISABLED_STATES = new Set([
   'setup_failed',
 ])
 
-const ONE_WEEK_SECONDS = 7 * 86400
-
-/**
- * 从 Claude 快照构造「本周进行中」窗口（满载率趋势用）
- * @param {object|null} snapshot - Claude 额度快照
- * @returns {{periodStart: number, periodEnd: number, peakPercentage: number}|null}
- */
-function buildClaudeCurrentCycle(snapshot) {
-  const resetsAt = Number(snapshot?.sevenDayResetsAt)
-  if (!Number.isFinite(resetsAt)) return null
-  return {
-    periodStart: resetsAt - ONE_WEEK_SECONDS,
-    periodEnd: resetsAt,
-    peakPercentage: snapshot?.sevenDayUsedPercentage,
-  }
-}
-
 /**
  * Claude Code 会员额度状态页面
  * @returns {JSX.Element}
@@ -61,9 +42,7 @@ export default function ClaudeUsageStatusPage() {
     installing,
     saving,
     error,
-    history,
     loadStatus,
-    loadHistory,
     ensureInstalled,
     saveConfig,
   } = useClaudeUsageStatus()
@@ -73,9 +52,7 @@ export default function ClaudeUsageStatusPage() {
     statusState: codexState,
     loading: codexLoading,
     error: codexError,
-    trend: codexTrend,
     loadStatus: loadCodexStatus,
-    loadTrend: loadCodexTrend,
   } = useCodexUsageStatus()
 
   // Toast 提示状态
@@ -83,15 +60,11 @@ export default function ClaudeUsageStatusPage() {
   // 显示设置弹窗开关
   const [settingsOpen, setSettingsOpen] = useState(false)
 
-  /**
-   * 刷新：同时刷新状态快照和满载率历史
-   */
+  /** 同时刷新 Claude 与 Codex 当前额度快照。 */
   const handleRefresh = useCallback(() => {
     loadStatus()
-    loadHistory()
     loadCodexStatus()
-    loadCodexTrend()
-  }, [loadStatus, loadHistory, loadCodexStatus, loadCodexTrend])
+  }, [loadStatus, loadCodexStatus])
 
   /**
    * 保存配置 — 接收弹窗传来的 draft 并保存，成功弹 Toast
@@ -120,10 +93,6 @@ export default function ClaudeUsageStatusPage() {
     return ok
   }, [ensureInstalled])
 
-  const claudeCurrentCycle = buildClaudeCurrentCycle(statusState?.snapshot)
-  const claudeHasTrend = statusState?.integrationState === 'ready' && Boolean(statusState?.snapshot?.hasRateLimits)
-  const codexHasTrend = Boolean(codexTrend?.currentCycle) || (codexTrend?.completedCycles?.length > 0)
-  const trendVisible = claudeHasTrend || codexHasTrend
   const integrationState = statusState?.integrationState
   const settingsDisabled = !statusState || SETTINGS_DISABLED_STATES.has(integrationState)
 
@@ -165,22 +134,6 @@ export default function ClaudeUsageStatusPage() {
         }}
         onRefresh={handleRefresh}
       />
-
-      {/* 卡片 2：满载率趋势双栏对比（Claude 固定 7 天周期 / Codex 自然周峰值） */}
-      {trendVisible && (
-        <DualTrendCard
-          claude={{
-            currentCycle: claudeCurrentCycle,
-            completedCycles: history.completedCycles,
-            avgCaption: '近 4 个 7 天周期峰值平均',
-          }}
-          codex={{
-            currentCycle: codexTrend.currentCycle,
-            completedCycles: codexTrend.completedCycles,
-            avgCaption: '近 4 个自然周峰值平均',
-          }}
-        />
-      )}
 
       {/* 显示设置弹窗 */}
       <ClaudeUsageSettingsModal

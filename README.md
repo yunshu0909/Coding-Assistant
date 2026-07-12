@@ -30,12 +30,9 @@ CodePal 按使用场景分 4 组：**账户与用量 · 文档 · 技能中心 �
 
 #### Claude 会员额度 · 状态栏双向同步
 
-![Claude Usage](docs/screenshots/claude-usage.png)
-
-自动接入 Claude Code 官方 `rate_limits`，展示 5h / 7d 剩余额度 + 距重置时间 + 满载率趋势，可配置到 Claude Code 底部状态栏。
+读取 Claude Code statusLine 与 Codex 本地 session 日志中的 `rate_limits`，展示 5h / 7d 当前额度与距重置时间；Claude 数据可配置到 Claude Code 底部状态栏。
 
 - 色阶断点：&lt;60% 绿 / 60-85% 黄 / ≥85% 红
-- 满载率趋势：基于最近 4 周完成的 7d 周期峰值
 - 状态栏显示模式：总是显示 / 达阈值才显示 / 关闭
 
 #### 用量监测 · 花了多少一目了然
@@ -207,7 +204,7 @@ skill-manager/
 
 完整版本信息见 [GitHub Releases](https://github.com/yunshu0909/CodePal/releases)。
 
-**最新版本：[v1.9.9](https://github.com/yunshu0909/CodePal/releases/tag/v1.9.9)**
+**最新版本：[v1.9.10](https://github.com/yunshu0909/CodePal/releases/tag/v1.9.10)**
 
 - 🔍 会员额度明确 Claude statusLine / Codex 本地 session 日志的数据来源与陈旧状态
 - 🌐 网络诊断改为默认零公网 IP 请求，单次检测与用户开启的持续监控分离
@@ -218,7 +215,7 @@ skill-manager/
 - **v1.5.2** — 稳定版发布 + 配置打包兜底 + 对话回顾恢复链路
 - **v1.5.0** — Codex 多账户切换 + 侧栏分组调整
 - **v1.4.5** — 对话回顾支持"启动历史对话"（复制 resume / 新终端启动）
-- **v1.4.1** — 满载率趋势（7d 周期峰值 + 最近 4 周）
+- **v1.4.1** — 曾引入满载率趋势（后因重置周期口径不稳定下线）
 - **v1.3.4** — Claude 会员额度状态栏集成（statusLine rate_limits）
 - **v1.2.6** — 对话回顾页上线
 - **v1.2.4** — 网络诊断模块

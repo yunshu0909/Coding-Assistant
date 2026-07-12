@@ -16,7 +16,7 @@ const path = require('path')
 const os = require('os')
 const { execFile } = require('child_process')
 const { promisify } = require('util')
-// 服务层不再反向依赖 handler 层：atomicWriteText 用于脚本/config/history 等非 settings 文件（settings 写走注入的 claudeSettingsService）
+// 服务层不再反向依赖 handler 层：atomicWriteText 用于脚本/config 等非 settings 文件（settings 写走注入的 claudeSettingsService）
 const { atomicWriteText } = require('./envFileService')
 
 const execFileAsync = promisify(execFile)
@@ -26,8 +26,6 @@ const CLAUDE_SETTINGS_PATH = path.join(CLAUDE_DIR, 'settings.json')
 const STATUS_SCRIPT_PATH = path.join(CLAUDE_DIR, 'codepal-usage-statusline.sh')
 const STATUS_CONFIG_PATH = path.join(CLAUDE_DIR, 'codepal-usage-status-config.json')
 const STATUS_SNAPSHOT_PATH = path.join(CLAUDE_DIR, 'codepal-usage-status-snapshot.json')
-// v1.4.1: 满载率趋势历史文件 — statusLine 脚本每次运行时更新，追踪 7d 周期峰值
-const STATUS_HISTORY_PATH = path.join(CLAUDE_DIR, 'codepal-usage-history.json')
 const MANAGED_STATUS_COMMAND = `bash "${STATUS_SCRIPT_PATH}"`
 const LEGACY_MANAGED_STATUS_COMMAND = `bash ${STATUS_SCRIPT_PATH}`
 
@@ -37,10 +35,8 @@ const LEGACY_MANAGED_STATUS_COMMAND = `bash ${STATUS_SCRIPT_PATH}`
 // v5: 新增当前上下文占用指示（bar + 百分比，默认开启不加配置）
 // v6: update_history 区分异常跳变（Anthropic provider_reset）与正常周期完成
 // v7: 新增第二行 Git 信息（git:<分支>@<最近tag><脏标记>），与额度第一行耦合
-const SCRIPT_VERSION = 7
-
-// v1.4.1: 满载率趋势最多保留的已完成周期数（约 3 个月）
-const MAX_COMPLETED_CYCLES = 13
+// v8: 下线满载率趋势，不再采集或写入 7d 周期历史
+const SCRIPT_VERSION = 8
 
 const VALID_DISPLAY_MODES = ['always', 'threshold', 'off']
 const DEFAULT_STATUS_CONFIG = Object.freeze({
@@ -105,8 +101,7 @@ function escapeForBashDoubleQuote(value) {
 
 /**
  * 把任意值强制规范为正整数字符串；无效值回退到 fallback。
- * 用于 Python 代码位置的占位符（`MAX_COMPLETED_CYCLES = __X__`），
- * 确保任何意外非数字不会让 Python 源码语法直接崩掉。
+ * 用于脚本版本占位符，确保任何意外非数字不会让脚本版本判断失效。
  * @param {unknown} value
  * @param {number} fallback
  * @returns {string}
@@ -125,8 +120,6 @@ function buildStatusScriptContent() {
     .replace(/__SCRIPT_VERSION__/g, () => toIntegerString(SCRIPT_VERSION, 0))
     .replace(/__CONFIG_PATH__/g, () => escapeForBashDoubleQuote(STATUS_CONFIG_PATH))
     .replace(/__SNAPSHOT_PATH__/g, () => escapeForBashDoubleQuote(STATUS_SNAPSHOT_PATH))
-    .replace(/__HISTORY_PATH__/g, () => escapeForBashDoubleQuote(STATUS_HISTORY_PATH))
-    .replace(/__MAX_COMPLETED_CYCLES__/g, () => toIntegerString(MAX_COMPLETED_CYCLES, 13))
 }
 
 /**
@@ -443,56 +436,6 @@ function createClaudeUsageStatusService({ pathExists, claudeSettingsService }) {
   }
 
   /**
-   * 读取 7d 周期满载率历史（供前端满载率趋势卡渲染）
-   *
-   * 返回结构：
-   *   {
-   *     success: true,
-   *     exists: boolean,              // 历史文件是否存在
-   *     currentCycle: object|null,    // 当前进行中周期
-   *     completedCycles: Array,       // 已完成周期，最新在前
-   *   }
-   *
-   * 文件损坏 / 解析失败时按"空数据"处理，返回 success=true 但 exists=false，
-   * 避免阻塞前端渲染（趋势是次要信息，不能因为历史文件坏了把主页面卡住）
-   *
-   * @returns {Promise<object>}
-   */
-  async function getUsageHistory() {
-    const exists = await pathExists(STATUS_HISTORY_PATH)
-    if (!exists) {
-      return {
-        success: true,
-        exists: false,
-        currentCycle: null,
-        completedCycles: [],
-      }
-    }
-
-    const raw = await readJsonFile(STATUS_HISTORY_PATH, null)
-    if (!isPlainObject(raw)) {
-      return {
-        success: true,
-        exists: true,
-        currentCycle: null,
-        completedCycles: [],
-      }
-    }
-
-    const currentCycle = isPlainObject(raw.currentCycle) ? raw.currentCycle : null
-    const completedCycles = Array.isArray(raw.completedCycles)
-      ? raw.completedCycles.filter((item) => isPlainObject(item))
-      : []
-
-    return {
-      success: true,
-      exists: true,
-      currentCycle,
-      completedCycles,
-    }
-  }
-
-  /**
    * 保存会员额度状态配置
    * @param {object} configInput - 用户配置
    * @returns {Promise<object>}
@@ -517,14 +460,12 @@ function createClaudeUsageStatusService({ pathExists, claudeSettingsService }) {
     scriptPath: STATUS_SCRIPT_PATH,
     configPath: STATUS_CONFIG_PATH,
     snapshotPath: STATUS_SNAPSHOT_PATH,
-    historyPath: STATUS_HISTORY_PATH,
     managedCommand: MANAGED_STATUS_COMMAND,
     defaultConfig: DEFAULT_STATUS_CONFIG,
     validDisplayModes: VALID_DISPLAY_MODES,
     getUsageStatusState,
     ensureUsageStatusInstalled,
     saveUsageStatusConfig,
-    getUsageHistory,
   }
 }
 
@@ -534,13 +475,11 @@ module.exports = {
   STATUS_SCRIPT_PATH,
   STATUS_CONFIG_PATH,
   STATUS_SNAPSHOT_PATH,
-  STATUS_HISTORY_PATH,
   MANAGED_STATUS_COMMAND,
   LEGACY_MANAGED_STATUS_COMMAND,
   DEFAULT_STATUS_CONFIG,
   VALID_DISPLAY_MODES,
   SCRIPT_VERSION,
-  MAX_COMPLETED_CYCLES,
   normalizeStatusConfig,
   buildStatusScriptContent,
   createClaudeUsageStatusService,

@@ -3,15 +3,12 @@
  *
  * 负责：
  * - 验证齿轮按钮在不同 integrationState 下的启用/禁用规则
- * - 验证 ClaudeUsageTrendCard 的条件渲染（仅在 ready + hasRateLimits 时出现）
  * - 验证显示设置弹窗的开/关流程
  * - 验证保存成功/失败对应的 Toast 反馈
- * - 验证快照过期时 stale 状态会透传到趋势卡片
  *
  * 测试策略：
  * - 直接 mock useClaudeUsageStatus，通过模块级 setter 动态控制 statusState
- * - 子组件（Card/TrendCard/Modal）使用真实实现，保持集成测试的覆盖面
- * - 通过 DOM 断言 trend-card / trend-card--stale / 按钮 disabled 等行为
+ * - 子组件（Card/Modal）使用真实实现，保持集成测试的覆盖面
  *
  * @module 自动化测试/V1.4.1/ClaudeUsageStatusPage.integration.test
  */
@@ -75,7 +72,6 @@ function setHookReturn({
   loading = false,
   installing = false,
   error = null,
-  history = { currentCycle: null, completedCycles: [] },
 } = {}) {
   currentHookReturn = {
     statusState,
@@ -83,9 +79,7 @@ function setHookReturn({
     installing,
     saving,
     error,
-    history,
     loadStatus: vi.fn(),
-    loadHistory: vi.fn(),
     ensureInstalled: vi.fn(),
     saveConfig: saveConfig || vi.fn().mockResolvedValue(true),
   }
@@ -154,94 +148,17 @@ describe('V1.4.1 ClaudeUsageStatusPage - 齿轮按钮 disabled 规则', () => {
 })
 
 // ============================================================
-// B. 满载率趋势卡可见性
+// B. 会员额度主体
 // ============================================================
-describe('V1.4.1 ClaudeUsageStatusPage - 趋势卡可见性', () => {
-  /**
-   * 判断趋势卡是否出现：通过 .trend-card 选择器（最稳），
-   * 同时用"满载率趋势"文本做双重断言
-   */
-  function trendCardVisible() {
-    const el = document.querySelector('.trend-card')
-    return el !== null
-  }
-
-  it('ready + hasRateLimits=true → 渲染趋势卡', () => {
+describe('V1.4.1 ClaudeUsageStatusPage - 当前额度', () => {
+  it('ready + hasRateLimits=true → 展示当前额度且不展示已下线趋势', () => {
     setHookReturn({
       statusState: makeReadyState({ hasRateLimits: true }),
     })
     render(<ClaudeUsageStatusPage />)
-    expect(trendCardVisible()).toBe(true)
-    expect(screen.getByText('满载率趋势')).toBeTruthy()
-  })
-
-  it('ready + hasRateLimits=false → 不渲染趋势卡', () => {
-    setHookReturn({
-      statusState: makeReadyState({ hasRateLimits: false }),
-    })
-    render(<ClaudeUsageStatusPage />)
-    expect(trendCardVisible()).toBe(false)
-  })
-
-  it('ready + snapshot 缺少 hasRateLimits 字段 → 不渲染趋势卡', () => {
-    const s = makeReadyState()
-    delete s.snapshot.hasRateLimits
-    setHookReturn({ statusState: s })
-    render(<ClaudeUsageStatusPage />)
-    expect(trendCardVisible()).toBe(false)
-  })
-
-  const negativeCases = [
-    'waiting_for_data',
-    'not_installed',
-    'conflict',
-    'setup_failed',
-  ]
-
-  negativeCases.forEach((state) => {
-    it(`integrationState=${state} → 不渲染趋势卡`, () => {
-      setHookReturn({
-        statusState: {
-          integrationState: state,
-          snapshot: null,
-          config: {
-            displayMode: 'always',
-            fiveHourThreshold: 70,
-            sevenDayThreshold: 70,
-          },
-        },
-      })
-      render(<ClaudeUsageStatusPage />)
-      expect(trendCardVisible()).toBe(false)
-    })
-  })
-
-  it('no_rate_limits 场景（waiting_for_data + snapshot.updatedAt 存在）→ 不渲染趋势卡', () => {
-    setHookReturn({
-      statusState: {
-        integrationState: 'waiting_for_data',
-        snapshot: makeSnapshot({ hasRateLimits: false }),
-        config: {
-          displayMode: 'always',
-          fiveHourThreshold: 70,
-          sevenDayThreshold: 70,
-        },
-      },
-    })
-    render(<ClaudeUsageStatusPage />)
-    expect(trendCardVisible()).toBe(false)
-  })
-
-  it('read_error 场景（statusState=null + error 非空）→ 不渲染趋势卡', () => {
-    setHookReturn({ statusState: null, error: 'IPC 读取失败' })
-    render(<ClaudeUsageStatusPage />)
-    expect(trendCardVisible()).toBe(false)
-  })
-
-  it('statusState=null → 不渲染趋势卡', () => {
-    setHookReturn({ statusState: null })
-    render(<ClaudeUsageStatusPage />)
-    expect(trendCardVisible()).toBe(false)
+    expect(screen.getByText('5 小时额度')).toBeTruthy()
+    expect(screen.getByText('7 天额度')).toBeTruthy()
+    expect(screen.queryByText('满载率趋势')).toBeNull()
   })
 })
 
@@ -328,41 +245,5 @@ describe('V1.4.1 ClaudeUsageStatusPage - 保存 Toast', () => {
     const toast = document.querySelector('.toast')
     expect(toast).not.toBeNull()
     expect(toast.className).toContain('toast--error')
-  })
-})
-
-// ============================================================
-// E. stale 透传
-// ============================================================
-describe('V1.4.1 ClaudeUsageStatusPage - stale 透传到趋势卡', () => {
-  it('updatedAt 在 3 小时前 + ready + hasRateLimits=true → trend-card 带 --stale 类', () => {
-    const threeHoursAgoSec = Math.floor(Date.now() / 1000) - 3 * 3600
-    setHookReturn({
-      statusState: makeReadyState({
-        hasRateLimits: true,
-        updatedAt: threeHoursAgoSec,
-      }),
-    })
-
-    render(<ClaudeUsageStatusPage />)
-
-    const trendCard = document.querySelector('.trend-card')
-    expect(trendCard).not.toBeNull()
-    expect(trendCard.classList.contains('trend-card--stale')).toBe(true)
-  })
-
-  it('updatedAt 为刚刚（未 stale）→ trend-card 不带 --stale 类', () => {
-    setHookReturn({
-      statusState: makeReadyState({
-        hasRateLimits: true,
-        updatedAt: Math.floor(Date.now() / 1000),
-      }),
-    })
-
-    render(<ClaudeUsageStatusPage />)
-
-    const trendCard = document.querySelector('.trend-card')
-    expect(trendCard).not.toBeNull()
-    expect(trendCard.classList.contains('trend-card--stale')).toBe(false)
   })
 })
