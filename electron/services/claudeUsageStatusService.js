@@ -374,6 +374,18 @@ function createClaudeUsageStatusService({ pathExists, claudeSettingsService }) {
     }
 
     const settingsData = isPlainObject(settingsReadResult.data) ? settingsReadResult.data : {}
+    const latestOwnership = detectStatusLineOwnership(settingsData)
+    // getUsageStatusState() 与这次最新读取之间，用户/其他工具可能改写 statusLine。
+    // 静默维护必须在任何 config/脚本/settings 写入前再次验证所有权。
+    if (!force && latestOwnership.hasCustomStatusLine) {
+      return {
+        ...currentState,
+        success: true,
+        integrationState: 'conflict',
+        message: '检测到用户已更改 Claude 状态栏，CodePal 已取消本次静默维护。',
+        ...latestOwnership,
+      }
+    }
     const nextSettings = JSON.parse(JSON.stringify(settingsData))
     nextSettings.statusLine = {
       type: 'command',

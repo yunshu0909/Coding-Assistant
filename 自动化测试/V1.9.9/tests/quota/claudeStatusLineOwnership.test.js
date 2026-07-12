@@ -8,7 +8,7 @@ import path from 'node:path'
 import os from 'node:os'
 import fs from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const require = createRequire(import.meta.url)
 
@@ -202,5 +202,32 @@ describe.sequential('V1.9.9 Claude statusLine ownership', () => {
     const after = JSON.parse(await fs.readFile(settingsPath, 'utf8'))
     expect(result.integrationState).toBe('conflict')
     expect(after.statusLine.command).toBe(customCommand)
+  })
+
+  it('Q-TC-10d: service 内第二次读取发现自定义时零写入', async () => {
+    const { usageModule } = loadModuleWithHome(tempHome)
+    const managedSettings = {
+      statusLine: { type: 'command', command: usageModule.MANAGED_STATUS_COMMAND },
+    }
+    const customSettings = {
+      statusLine: { type: 'command', command: 'bash "/tmp/changed-between-service-reads.sh"' },
+    }
+    await fs.writeFile(path.join(tempHome, '.claude', 'codepal-usage-statusline.sh'), '# codepal-script-version: 1\n', { mode: 0o700 })
+    const writeClaudeSettingsFile = vi.fn()
+    const claudeSettingsService = {
+      readClaudeSettingsFile: vi.fn()
+        .mockResolvedValueOnce({ success: true, exists: true, content: `${JSON.stringify(managedSettings)}\n`, data: managedSettings })
+        .mockResolvedValueOnce({ success: true, exists: true, content: `${JSON.stringify(customSettings)}\n`, data: customSettings }),
+      writeClaudeSettingsFile,
+    }
+    const service = usageModule.createClaudeUsageStatusService({ pathExists, claudeSettingsService })
+
+    const result = await service.ensureUsageStatusInstalled({ force: false })
+
+    expect(claudeSettingsService.readClaudeSettingsFile).toHaveBeenCalledTimes(2)
+    expect(result.integrationState).toBe('conflict')
+    expect(result.hasCustomStatusLine).toBe(true)
+    expect(writeClaudeSettingsFile).not.toHaveBeenCalled()
+    expect(await pathExists(service.configPath)).toBe(false)
   })
 })
