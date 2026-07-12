@@ -265,25 +265,24 @@ async function probeAllEndpoints() {
 }
 
 /* ============================================================
-   IP 监控后台常驻服务
-   应用启动即运行，主进程维护状态，渲染进程只读
+   公网 IP 按需检测 / 用户授权的持续监控
+   默认零请求；只有持久化开关严格为 true 时才在启动后恢复。
    ============================================================ */
 
-const BACKGROUND_INTERVAL_MS = 30000  // 后台 30 秒
+const CONTINUOUS_MONITORING_STORE_KEY = 'networkDiagnostics.continuousMonitoring'
+const BACKGROUND_INTERVAL_MS = 60000  // 页面关闭后 60 秒
 const FOREGROUND_INTERVAL_MS = 5000   // 页面打开时 5 秒
 const MAX_TIMELINE_POINTS = 30
 const ROUND_DURATION_MS = 30 * 60 * 1000
 
-/** 单例状态 */
-let monitorState = createInitialState()
-let intervalId = null
-let currentIntervalMs = BACKGROUND_INTERVAL_MS
-let getMainWindowFn = null  // 延迟获取 mainWindow 的函数
-
+/**
+ * 创建空闲初始状态
+ * @returns {object}
+ */
 function createInitialState() {
   return {
-    isEnabled: true,
-    status: 'detecting',  // detecting | stable | switched | failed | off
+    isEnabled: false,
+    status: 'idle',  // idle | detecting | stable | switched | failed | off
     currentIp: null,
     currentSource: null,
     previousIp: null,
@@ -294,135 +293,276 @@ function createInitialState() {
     consecutiveFailCount: 0,
     successCount: 0,
     roundStartTime: null,
+    lastCheckedAt: null,
+    sampleIntervalMs: null,
   }
 }
 
 /**
- * 处理一次采样结果，更新 monitorState
- * @param {{success: boolean, ip: string|null, source: string|null}} result
+ * 创建可注入依赖的网络诊断实例
+ * @param {object} [deps]
+ * @param {() => Promise<object>} [deps.probePublicIpFn] - 公网 IP 探测函数
+ * @param {{get?: Function, set?: Function}|null} [deps.store] - electron-store 实例
+ * @param {() => import('electron').BrowserWindow|null} [deps.getWindow] - 获取主窗口
+ * @param {Function} [deps.setIntervalFn] - 定时器注入
+ * @param {Function} [deps.clearIntervalFn] - 清理定时器注入
+ * @param {() => number} [deps.nowFn] - 当前时间注入
+ * @returns {object}
  */
-function handleSampleResult(result) {
-  // 先检查 30 分钟轮次是否到期，到期则重置再写入新数据
-  if (monitorState.roundStartTime && Date.now() - monitorState.roundStartTime >= ROUND_DURATION_MS) {
-    monitorState.sampleCount = 0
-    monitorState.switchCount = 0
-    monitorState.uniqueIps = monitorState.currentIp ? [monitorState.currentIp] : []
-    monitorState.timeline = []
-    monitorState.consecutiveFailCount = 0
-    monitorState.successCount = 0
-    monitorState.roundStartTime = Date.now()
+function createNetworkDiagnosticsService({
+  probePublicIpFn = probePublicIp,
+  store = null,
+  getWindow = () => null,
+  setIntervalFn = setInterval,
+  clearIntervalFn = clearInterval,
+  nowFn = Date.now,
+} = {}) {
+  let monitorState = createInitialState()
+  let intervalId = null
+  let isForeground = false
+  let samplePromise = null
+
+  /** 返回不可变快照，避免 renderer/测试改坏服务内部数组 */
+  function getState() {
+    return {
+      ...monitorState,
+      uniqueIps: [...monitorState.uniqueIps],
+      timeline: monitorState.timeline.map((point) => ({ ...point })),
+    }
   }
 
-  if (result.success && result.ip) {
-    const isFirstSample = monitorState.currentIp === null
-    const isSwitched = !isFirstSample && result.ip !== monitorState.currentIp
+  /** 将当前快照推给 renderer；窗口不可用时不影响服务 */
+  function emitState() {
+    try {
+      const mainWindow = getWindow?.()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('network:ipStateUpdate', getState())
+      }
+    } catch {
+      // 窗口不可用时静默，后台监控继续
+    }
+  }
 
-    if (!monitorState.uniqueIps.includes(result.ip)) {
-      monitorState.uniqueIps.push(result.ip)
+  /** 清理现有 interval，并同步公开的当前频率 */
+  function clearSchedule() {
+    if (intervalId !== null) {
+      clearIntervalFn(intervalId)
+      intervalId = null
+    }
+    monitorState.sampleIntervalMs = null
+  }
+
+  /** 仅在用户已开启持续监控时建立唯一 interval */
+  function restartSchedule() {
+    clearSchedule()
+    if (!monitorState.isEnabled) return
+
+    const intervalMs = isForeground ? FOREGROUND_INTERVAL_MS : BACKGROUND_INTERVAL_MS
+    monitorState.sampleIntervalMs = intervalMs
+    intervalId = setIntervalFn(() => {
+      runSample({ allowWhenDisabled: false }).catch(() => {})
+    }, intervalMs)
+  }
+
+  /**
+   * 处理一次采样结果
+   * @param {{success: boolean, ip: string|null, source: string|null}} result
+   */
+  function handleSampleResult(result) {
+    const now = nowFn()
+    if (monitorState.roundStartTime && now - monitorState.roundStartTime >= ROUND_DURATION_MS) {
+      monitorState.sampleCount = 0
+      monitorState.switchCount = 0
+      monitorState.uniqueIps = monitorState.currentIp ? [monitorState.currentIp] : []
+      monitorState.timeline = []
+      monitorState.consecutiveFailCount = 0
+      monitorState.successCount = 0
+      monitorState.roundStartTime = now
     }
 
-    monitorState.previousIp = isFirstSample ? null : monitorState.currentIp
-    monitorState.currentIp = result.ip
-    monitorState.currentSource = result.source
-    monitorState.sampleCount += 1
-    monitorState.successCount += 1
-    monitorState.consecutiveFailCount = 0
-    monitorState.switchCount += isSwitched ? 1 : 0
-    monitorState.status = isSwitched ? 'switched' : 'stable'
-    monitorState.timeline.push({ type: isSwitched ? 'switch' : 'stable', ip: result.ip, timestamp: Date.now() })
-    if (!monitorState.roundStartTime) monitorState.roundStartTime = Date.now()
-  } else {
-    monitorState.sampleCount += 1
-    monitorState.consecutiveFailCount += 1
-    monitorState.status = 'failed'
-    monitorState.timeline.push({ type: 'fail', ip: null, timestamp: Date.now() })
-    if (!monitorState.roundStartTime) monitorState.roundStartTime = Date.now()
-  }
+    monitorState.lastCheckedAt = now
 
-  // 时间线最多保留 MAX_TIMELINE_POINTS
-  if (monitorState.timeline.length > MAX_TIMELINE_POINTS) {
-    monitorState.timeline = monitorState.timeline.slice(-MAX_TIMELINE_POINTS)
-  }
-}
+    if (result.success && result.ip) {
+      const isFirstSample = monitorState.currentIp === null
+      const isSwitched = !isFirstSample && result.ip !== monitorState.currentIp
 
-/** 执行一次采样并推送给渲染进程 */
-async function doSample() {
-  if (!monitorState.isEnabled) return
+      if (!monitorState.uniqueIps.includes(result.ip)) {
+        monitorState.uniqueIps.push(result.ip)
+      }
 
-  const result = await probePublicIp()
-  const previousIp = monitorState.currentIp
-  handleSampleResult(result)
-
-  // 推送状态更新给渲染进程
-  try {
-    const mainWindow = getMainWindowFn?.()
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('network:ipStateUpdate', monitorState)
+      monitorState.previousIp = isFirstSample ? null : monitorState.currentIp
+      monitorState.currentIp = result.ip
+      monitorState.currentSource = result.source
+      monitorState.sampleCount += 1
+      monitorState.successCount += 1
+      monitorState.consecutiveFailCount = 0
+      monitorState.switchCount += isSwitched ? 1 : 0
+      monitorState.status = isSwitched ? 'switched' : 'stable'
+      monitorState.timeline.push({ type: isSwitched ? 'switch' : 'stable', ip: result.ip, timestamp: now })
+      if (!monitorState.roundStartTime) monitorState.roundStartTime = now
+    } else {
+      monitorState.sampleCount += 1
+      monitorState.consecutiveFailCount += 1
+      monitorState.status = 'failed'
+      monitorState.timeline.push({ type: 'fail', ip: null, timestamp: now })
+      if (!monitorState.roundStartTime) monitorState.roundStartTime = now
     }
-  } catch {
-    // 窗口不可用时静默
+
+    if (monitorState.timeline.length > MAX_TIMELINE_POINTS) {
+      monitorState.timeline = monitorState.timeline.slice(-MAX_TIMELINE_POINTS)
+    }
   }
-}
 
-/** 启动/重启定时器 */
-function restartInterval(intervalMs) {
-  clearInterval(intervalId)
-  currentIntervalMs = intervalMs
-  intervalId = setInterval(doSample, intervalMs)
-}
+  /**
+   * 执行一次采样；同一时刻只允许一个请求在飞
+   * @param {{allowWhenDisabled: boolean}} options
+   * @returns {Promise<object>}
+   */
+  async function runSample({ allowWhenDisabled }) {
+    if (!monitorState.isEnabled && !allowWhenDisabled) return getState()
+    if (samplePromise) return samplePromise
 
-/**
- * 启动 IP 监控（应用启动时调用一次）
- * @param {() => import('electron').BrowserWindow|null} getWindow - 获取主窗口的函数
- */
-function startIpMonitor(getWindow) {
-  getMainWindowFn = getWindow
-  doSample().catch(() => {})  // 首次采样，异常由 handleSampleResult 处理
-  restartInterval(BACKGROUND_INTERVAL_MS)
-}
+    const startedAsContinuous = monitorState.isEnabled && !allowWhenDisabled
+    monitorState.status = 'detecting'
+    emitState()
 
-/**
- * 获取当前监控状态（页面打开时拉取）
- * @returns {Object}
- */
-function getIpMonitorState() {
-  return { ...monitorState }
-}
+    samplePromise = (async () => {
+      let result
+      try {
+        result = await probePublicIpFn()
+      } catch (error) {
+        result = { success: false, ip: null, source: null, error: error?.message || 'IP_PROBE_FAILED' }
+      }
+      handleSampleResult(result)
 
-/**
- * 页面打开时切换到快速采样模式
- * @param {boolean} fast - true=5秒 false=30秒
- */
-function setIpMonitorFastMode(fast) {
-  const targetMs = fast ? FOREGROUND_INTERVAL_MS : BACKGROUND_INTERVAL_MS
-  if (targetMs !== currentIntervalMs) {
-    restartInterval(targetMs)
+      // 持续采样过程中被用户关闭：结果可以保留，但状态必须保持“已停止”。
+      if (startedAsContinuous && !monitorState.isEnabled) {
+        monitorState.status = monitorState.currentIp || monitorState.sampleCount > 0 ? 'off' : 'idle'
+      }
+      emitState()
+      return getState()
+    })()
+
+    try {
+      return await samplePromise
+    } finally {
+      samplePromise = null
+    }
   }
-}
 
-/**
- * 暂停/恢复 IP 监控
- * @param {boolean} enabled
- */
-function toggleIpMonitor(enabled) {
-  if (enabled) {
+  /** 根据持久化选择初始化；默认或读取失败均为关闭 */
+  function initialize() {
+    let shouldResume = false
+    try {
+      shouldResume = store?.get?.(CONTINUOUS_MONITORING_STORE_KEY, false) === true
+    } catch {
+      shouldResume = false
+    }
+
     monitorState = createInitialState()
-    doSample().catch(() => {})
-    restartInterval(currentIntervalMs)
-  } else {
-    monitorState.isEnabled = false
-    monitorState.status = 'off'
-    clearInterval(intervalId)
+    monitorState.isEnabled = shouldResume
+    monitorState.status = shouldResume ? 'detecting' : 'idle'
+
+    if (shouldResume) {
+      runSample({ allowWhenDisabled: false }).catch(() => {})
+      restartSchedule()
+    }
+    emitState()
+    return getState()
   }
+
+  /** 单次检测：无论持续监控是否开启，都只复用本次请求，不创建新 timer */
+  function probeIpOnce() {
+    return runSample({ allowWhenDisabled: true })
+  }
+
+  /** 页面打开/关闭只改变已开启持续监控的频率，绝不改变开关 */
+  function setForeground(foreground) {
+    const nextForeground = Boolean(foreground)
+    if (nextForeground !== isForeground) {
+      isForeground = nextForeground
+      restartSchedule()
+      emitState()
+    }
+    return getState()
+  }
+
+  /** 用户明确开启/关闭持续监控，并同步持久化 */
+  function setContinuousMonitoring(enabled) {
+    const nextEnabled = Boolean(enabled)
+    try {
+      store?.set?.(CONTINUOUS_MONITORING_STORE_KEY, nextEnabled)
+    } catch (error) {
+      const persistError = new Error(error?.message || 'PREFERENCE_WRITE_FAILED')
+      persistError.code = 'PREFERENCE_WRITE_FAILED'
+      throw persistError
+    }
+
+    monitorState.isEnabled = nextEnabled
+    if (nextEnabled) {
+      monitorState.status = 'detecting'
+      runSample({ allowWhenDisabled: false }).catch(() => {})
+      restartSchedule()
+    } else {
+      clearSchedule()
+      monitorState.status = monitorState.currentIp || monitorState.sampleCount > 0 ? 'off' : 'idle'
+      emitState()
+    }
+    return getState()
+  }
+
+  /** 释放 interval，供应用退出和测试清理 */
+  function dispose() {
+    clearSchedule()
+  }
+
+  return {
+    initialize,
+    getState,
+    probeIpOnce,
+    setForeground,
+    setContinuousMonitoring,
+    dispose,
+  }
+}
+
+/** 默认实例：由 main 注入 electron-store 与窗口引用 */
+let defaultIpService = createNetworkDiagnosticsService()
+
+function initializeIpMonitor({ store, getWindow }) {
+  defaultIpService.dispose()
+  defaultIpService = createNetworkDiagnosticsService({ store, getWindow })
+  return defaultIpService.initialize()
+}
+
+function getIpMonitorState() {
+  return defaultIpService.getState()
+}
+
+function probeIpOnce() {
+  return defaultIpService.probeIpOnce()
+}
+
+function setIpMonitorFastMode(fast) {
+  return defaultIpService.setForeground(fast)
+}
+
+function toggleIpMonitor(enabled) {
+  return defaultIpService.setContinuousMonitoring(enabled)
 }
 
 module.exports = {
   probePublicIp,
   probeAllEndpoints,
-  startIpMonitor,
+  createNetworkDiagnosticsService,
+  initializeIpMonitor,
   getIpMonitorState,
+  probeIpOnce,
   setIpMonitorFastMode,
   toggleIpMonitor,
+  CONTINUOUS_MONITORING_STORE_KEY,
+  BACKGROUND_INTERVAL_MS,
+  FOREGROUND_INTERVAL_MS,
   REQUEST_TIMEOUT_MS,
   ENDPOINT_PROBES,
 }

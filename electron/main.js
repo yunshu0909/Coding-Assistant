@@ -67,7 +67,7 @@ const { registerSessionResumeHandlers } = require('./handlers/registerSessionRes
 const { registerDocBrowserHandlers } = require('./handlers/registerDocBrowserHandlers')
 const { registerK28StatusLightHandlers } = require('./handlers/registerK28StatusLightHandlers')
 const { initDocBrowserStore } = require('./services/docBrowserService')
-const { startIpMonitor } = require('./services/networkDiagnosticsService')
+const { initializeIpMonitor } = require('./services/networkDiagnosticsService')
 const { registerRepoWatcherHandlers } = require('./handlers/registerRepoWatcherHandlers')
 const { attachNavigationGuard, registerNavigationGuardHandlers } = require('./services/navigationGuardService')
 const { resolveProviderRegistryFilePath } = require('./services/providerRegistryPathService')
@@ -223,8 +223,8 @@ app.whenReady().then(async () => {
     console.warn('[app-update] startup check failed:', error?.message || error)
   })
 
-  // 启动 IP 后台监控（应用启动即运行，30 秒采样）
-  startIpMonitor(() => mainWindow)
+  // 恢复用户明确选择的持续监控；默认关闭时不会发起公网 IP 请求。
+  initializeIpMonitor({ store, getWindow: () => mainWindow })
 
   // 启动中央仓库文件监听（方向 1：中央→工具自动推送）
   let initialRepoPath = '~/Documents/SkillManager/'

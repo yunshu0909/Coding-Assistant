@@ -534,14 +534,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getIpMonitorState: () => ipcRenderer.invoke('network:getIpMonitorState'),
 
   /**
-   * 切换 IP 采样频率（页面打开=快速5秒，离开=后台30秒）
+   * 按需检测一次公网 IP，不启动持续监控
+   * @returns {Promise<{success: boolean, data: Object|null, error: string|null}>}
+   */
+  probeIpOnce: () => ipcRenderer.invoke('network:probeIpOnce'),
+
+  /**
+   * 切换 IP 采样频率（页面打开=快速5秒，离开=后台60秒）
    * @param {boolean} fast
    * @returns {Promise<{success: boolean}>}
    */
   setIpMonitorFastMode: (fast) => ipcRenderer.invoke('network:setIpMonitorFastMode', fast),
 
   /**
-   * 暂停/恢复 IP 监控
+   * 开启/关闭持续监控（选择由主进程持久化）
    * @param {boolean} enabled
    * @returns {Promise<{success: boolean, data: Object}>}
    */

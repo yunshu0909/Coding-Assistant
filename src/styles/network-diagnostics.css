@@ -22,6 +22,13 @@
   min-width: 0;
 }
 
+/* 默认 800px 窗口扣除侧栏后双栏过窄；宽窗仍保持左右对照。 */
+@media (max-width: 900px) {
+  .nd-layout {
+    flex-direction: column;
+  }
+}
+
 /* ============================================================
    卡片通用
    ============================================================ */
@@ -104,48 +111,6 @@
 @keyframes nd-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
-}
-
-/* ============================================================
-   开关按钮
-   ============================================================ */
-.nd-toggle {
-  position: relative;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.nd-toggle-track {
-  display: block;
-  width: 36px;
-  height: 20px;
-  border-radius: 10px;
-  background: var(--border-strong, #cbd0d8);
-  transition: background 150ms ease;
-  position: relative;
-}
-
-.nd-toggle-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-  transition: transform 150ms ease;
-}
-
-.nd-toggle--on .nd-toggle-track {
-  background: var(--color-primary, #2563eb);
-}
-
-.nd-toggle--on .nd-toggle-thumb {
-  transform: translateX(16px);
 }
 
 /* ============================================================
@@ -242,6 +207,40 @@
 .nd-timeline-dot:hover { opacity: 1; }
 .nd-timeline-dot--switch { background: var(--color-warning, #d97706); }
 .nd-timeline-dot--fail   { background: var(--color-danger, #dc2626); }
+
+.nd-ip-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1.5px solid var(--border-default);
+}
+
+.nd-monitor-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.nd-monitor-toggle > span {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.nd-monitor-toggle strong {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.nd-monitor-toggle small {
+  color: var(--text-placeholder);
+  font-size: var(--text-2xs);
+}
 
 /* 底栏 */
 .nd-running-bar {
