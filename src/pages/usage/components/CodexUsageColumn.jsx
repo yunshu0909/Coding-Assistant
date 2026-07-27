@@ -5,6 +5,8 @@
  * - Codex 侧 4 态渲染（ready / no_data / no_rate_limits / read_error）+ stale 派生
  * - Codex 零接入：无安装/配置流程，空态按钮只有「刷新」
  *
+ * 额度行数由日志里的窗口数决定（2026-07 起 Codex 一般只返回 7 天窗口），不假设固定两条。
+ *
  * @module pages/usage/components/CodexUsageColumn
  */
 
@@ -84,7 +86,7 @@ export default function CodexUsageColumn({ statusState, loading, error, onRefres
         <ColumnEmpty
           icon="○"
           title="未检测到 Codex 使用记录"
-          desc={<>近期没有可读的 Codex 额度数据。用一次 Codex CLI 后回来刷新，这里会显示它的 5h / 7d 额度。</>}
+          desc={<>近期没有可读的 Codex 额度数据。用一次 Codex CLI 后回来刷新，这里会按日志显示它当前的额度窗口。</>}
           primaryLabel={loading ? '刷新中...' : '刷新状态'}
           primaryLoading={loading}
           onPrimary={onRefresh}
@@ -99,7 +101,7 @@ export default function CodexUsageColumn({ statusState, loading, error, onRefres
           desc={
             <>
               检测到 Codex 使用记录，但日志里没有额度字段。常见原因：使用 API key 模式，
-              或不是 ChatGPT 订阅账号（只有订阅用户才有 5h / 7d 额度）。
+              或不是 ChatGPT 订阅账号（只有订阅账号才会返回额度数据）。
             </>
           }
           primaryLabel={loading ? '刷新中...' : '刷新状态'}

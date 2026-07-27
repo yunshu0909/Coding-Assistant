@@ -3,7 +3,8 @@
  *
  * 负责：
  * - 校验 parseCodexRateLimits 只认 token_count 行、不被对话正文里的 "rate_limits" 文本误命中
- * - 校验归一化（字段名与 Claude snapshot 一致、resets_at 透传 unix、百分比 clamp、0% 不漏）
+ * - 校验归一化（窗口按 window_minutes 归属、resets_at 透传 unix、百分比 clamp、0% 不漏）
+ * - 校验新旧两种日志格式：老 primary=5h+secondary=7d，新 primary=7d+secondary=null
  * - 校验扫描取最新（乱序 / 多文件取全局 timestamp max）
  * - 校验状态机（no_data / no_rate_limits / ready / read_error）
  *
@@ -43,10 +44,12 @@ function tokenCountLine({ ts = '2026-06-07T15:59:00.000Z', primary, secondary, w
   return JSON.stringify({ type: 'event_msg', timestamp: ts, payload })
 }
 
-/** 标准 primary（5h）窗口对象 */
+/** 老格式 primary（5h）窗口对象 */
 const PRIMARY = { used_percent: 26, window_minutes: 300, resets_at: 1780834330 }
-/** 标准 secondary（7d）窗口对象 */
+/** 老格式 secondary（7d）窗口对象 */
 const SECONDARY = { used_percent: 41, window_minutes: 10080, resets_at: 1781147614 }
+/** 新格式（2026-07 起）：周额度直接写在 primary 槽，secondary 为 null */
+const WEEKLY_IN_PRIMARY = { used_percent: 31, window_minutes: 10080, resets_at: 1785725865 }
 
 /** 伪 scanLogFilesInRange：返回给定 files */
 function fakeScan(files) {
@@ -114,10 +117,14 @@ describe('toResetUnixSeconds', () => {
 })
 
 describe('normalizeCodexSnapshot', () => {
-  it('字段名与 Claude snapshot 一致 + resets_at 透传 + updatedAt ISO→unix', () => {
+  it('老格式（primary=5h + secondary=7d）：windows 齐 + 兼容字段齐 + updatedAt ISO→unix', () => {
     const ts = new Date('2026-06-07T15:59:00.000Z')
     const snap = normalizeCodexSnapshot({ primary: PRIMARY, secondary: SECONDARY }, ts)
     expect(snap).toEqual({
+      windows: [
+        { windowMinutes: 300, usedPercent: 26, resetsAt: 1780834330 },
+        { windowMinutes: 10080, usedPercent: 41, resetsAt: 1781147614 },
+      ],
       fiveHourUsedPercentage: 26,
       sevenDayUsedPercentage: 41,
       resetsAt: 1780834330,
@@ -125,6 +132,45 @@ describe('normalizeCodexSnapshot', () => {
       updatedAt: Math.floor(ts.getTime() / 1000),
       hasRateLimits: true,
     })
+  })
+
+  it('新格式（周额度写在 primary，secondary=null）：归到 7 天窗口，不冒充 5 小时', () => {
+    const snap = normalizeCodexSnapshot({ primary: WEEKLY_IN_PRIMARY, secondary: null }, new Date('2026-07-27T15:11:00.000Z'))
+    expect(snap.windows).toEqual([{ windowMinutes: 10080, usedPercent: 31, resetsAt: 1785725865 }])
+    // 关键回归：31% 是周额度，绝不能落到 5 小时那一档
+    expect(snap.fiveHourUsedPercentage).toBeNull()
+    expect(snap.resetsAt).toBeNull()
+    expect(snap.sevenDayUsedPercentage).toBe(31)
+    expect(snap.sevenDayResetsAt).toBe(1785725865)
+    expect(snap.hasRateLimits).toBe(true)
+  })
+
+  it('窗口顺序按时长从短到长，不按槽位顺序', () => {
+    const snap = normalizeCodexSnapshot(
+      { primary: SECONDARY, secondary: PRIMARY },
+      new Date('2026-06-07T00:00:00Z')
+    )
+    expect(snap.windows.map((w) => w.windowMinutes)).toEqual([300, 10080])
+    expect(snap.fiveHourUsedPercentage).toBe(26)
+    expect(snap.sevenDayUsedPercentage).toBe(41)
+  })
+
+  it('window_minutes 缺失 → 退回槽位语义兜底', () => {
+    const snap = normalizeCodexSnapshot(
+      { primary: { used_percent: 7, resets_at: 1780834330 }, secondary: { used_percent: 9, resets_at: 1781147614 } },
+      new Date('2026-06-07T00:00:00Z')
+    )
+    expect(snap.fiveHourUsedPercentage).toBe(7)
+    expect(snap.sevenDayUsedPercentage).toBe(9)
+    expect(snap.windows).toHaveLength(2)
+  })
+
+  it('未来若出现非 5h / 7d 的窗口（如 30 天），仍原样带出 windowMinutes', () => {
+    const snap = normalizeCodexSnapshot(
+      { primary: { used_percent: 12, window_minutes: 43200, resets_at: 1785725865 } },
+      new Date('2026-06-07T00:00:00Z')
+    )
+    expect(snap.windows).toEqual([{ windowMinutes: 43200, usedPercent: 12, resetsAt: 1785725865 }])
   })
 
   it('缺 primary → fiveHour null（边界⑨）', () => {
@@ -214,6 +260,14 @@ describe('getCodexUsageStatusState 状态机', () => {
     expect(r.snapshot.fiveHourUsedPercentage).toBe(26)
     expect(r.snapshot.sevenDayUsedPercentage).toBe(41)
     expect(r.snapshot.resetsAt).toBe(1780834330)
+  })
+
+  it('新格式日志 → ready 且只有一个 7 天窗口（端到端回归）', async () => {
+    const files = [{ path: 'a.jsonl', mtime: '', lines: [tokenCountLine({ primary: WEEKLY_IN_PRIMARY, secondary: null })] }]
+    const r = await getCodexUsageStatusState({ ...baseDeps, scanLogFilesInRangeFn: fakeScan(files) })
+    expect(r.integrationState).toBe('ready')
+    expect(r.snapshot.windows).toEqual([{ windowMinutes: 10080, usedPercent: 31, resetsAt: 1785725865 }])
+    expect(r.snapshot.fiveHourUsedPercentage).toBeNull()
   })
 
   it('扫描抛错 → read_error（success false，边界:IPC 兜底）', async () => {

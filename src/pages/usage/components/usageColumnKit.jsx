@@ -43,6 +43,31 @@ const PCT_WARNING_THRESHOLD = 60
 const PCT_DANGER_THRESHOLD = 85
 
 /**
+ * 判断百分比是否真的有值。
+ * 不能直接 Number.isFinite(Number(pct))：Number(null) === 0，会把「没有这个窗口」渲染成绿色的 0%。
+ *
+ * @param {number|null|undefined} value - 已用百分比
+ * @returns {boolean}
+ */
+export function hasPercentValue(value) {
+  if (value === null || value === undefined) return false
+  return Number.isFinite(Number(value))
+}
+
+/**
+ * 窗口长度（分钟）→ 展示标签。标签由数据推出，不写死「5h + 7d 两条」。
+ * @param {number|null|undefined} windowMinutes - 窗口长度（分钟）
+ * @returns {string}
+ */
+export function formatWindowLabel(windowMinutes) {
+  const num = Number(windowMinutes)
+  if (!Number.isFinite(num) || num <= 0) return '当前额度'
+  if (num % 1440 === 0) return `${num / 1440} 天额度`
+  if (num % 60 === 0) return `${num / 60} 小时额度`
+  return `${num} 分钟额度`
+}
+
+/**
  * 已用百分比 → 色阶后缀
  * @param {number|null|undefined} value - 已用百分比
  * @returns {'success'|'warning'|'danger'|'dim'}
@@ -136,7 +161,7 @@ export function SourceMeta({ source, update }) {
 }
 
 /**
- * 单条额度行（5h / 7d 水平进度条）
+ * 单条额度行（一个额度窗口一条水平进度条）
  * @param {object} props
  * @param {string} props.label - 标签
  * @param {number|null|undefined} props.pct - 已用百分比
@@ -145,8 +170,8 @@ export function SourceMeta({ source, update }) {
  */
 export function UsageRow({ label, pct, resetsAt }) {
   const colorClass = pctColorClass(pct)
-  // 用 Number.isFinite 判，0% 是合法值不能漏
-  const hasValue = Number.isFinite(Number(pct))
+  // 0% 是合法值不能漏，null/undefined 不能当 0（见 hasPercentValue）
+  const hasValue = hasPercentValue(pct)
   const width = hasValue ? Math.min(100, Math.max(0, Number(pct))) : 0
   const reset = formatResetTime(resetsAt)
 
@@ -175,7 +200,33 @@ export function UsageRow({ label, pct, resetsAt }) {
 }
 
 /**
- * 两条额度行主体（5h + 7d）
+ * 快照 → 待渲染的额度行。
+ * 有 windows（Codex）就按窗口数据驱动；没有（Claude statusLine 快照）走 5h + 7d 兼容字段。
+ * 两条路径都会丢掉没有数值的窗口——宁可少一行，也不把「没有这个窗口」画成 0%。
+ *
+ * @param {object|null} snapshot - 归一化快照
+ * @returns {Array<{key: string, label: string, pct: number|null|undefined, resetsAt: number|null|undefined}>}
+ */
+function toUsageRows(snapshot) {
+  const windows = Array.isArray(snapshot?.windows) ? snapshot.windows : null
+
+  const rows = windows
+    ? windows.map((win, index) => ({
+      key: `w${win?.windowMinutes ?? 'na'}-${index}`,
+      label: formatWindowLabel(win?.windowMinutes),
+      pct: win?.usedPercent,
+      resetsAt: win?.resetsAt,
+    }))
+    : [
+      { key: '5h', label: '5 小时额度', pct: snapshot?.fiveHourUsedPercentage, resetsAt: snapshot?.resetsAt },
+      { key: '7d', label: '7 天额度', pct: snapshot?.sevenDayUsedPercentage, resetsAt: snapshot?.sevenDayResetsAt },
+    ]
+
+  return rows.filter((row) => hasPercentValue(row.pct))
+}
+
+/**
+ * 额度行主体：账号有几个额度窗口就渲染几条
  * @param {object} props
  * @param {object|null} props.snapshot - 归一化快照
  * @returns {JSX.Element}
@@ -183,8 +234,9 @@ export function UsageRow({ label, pct, resetsAt }) {
 export function UsageRows({ snapshot }) {
   return (
     <div className="usage-col__rows">
-      <UsageRow label="5 小时额度" pct={snapshot?.fiveHourUsedPercentage} resetsAt={snapshot?.resetsAt} />
-      <UsageRow label="7 天额度" pct={snapshot?.sevenDayUsedPercentage} resetsAt={snapshot?.sevenDayResetsAt} />
+      {toUsageRows(snapshot).map((row) => (
+        <UsageRow key={row.key} label={row.label} pct={row.pct} resetsAt={row.resetsAt} />
+      ))}
     </div>
   )
 }

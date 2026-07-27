@@ -2,8 +2,8 @@
  * Codex 会员额度状态服务
  *
  * 负责：
- * - 从 ~/.codex/sessions 的会话日志读取 Codex 最新 rate_limits（5 小时 / 7 天窗口）
- * - 把 Codex 原始字段归一化成与 Claude snapshot 完全相同的形状（前端组件零改动复用）
+ * - 从 ~/.codex/sessions 的会话日志读取 Codex 最新 rate_limits（账号有几个窗口就读几个）
+ * - 按 window_minutes 把原始额度桶归一化成 windows 数组（另附 Claude 同名兼容字段）
  * - 汇总前端展示所需的接入状态（ready / no_data / no_rate_limits / read_error）
  *
  * 与 Claude 的本质区别：Codex 零配置——CLI 自己把 rate_limits 写进 session 日志，
@@ -25,6 +25,10 @@ const LOOKBACK_MS = LOOKBACK_DAYS * 24 * 60 * 60 * 1000
 const MAX_FILES = 200
 // rate_limits 在每次 token_count 都写，尾部 5000 行必含最新值。
 const MAX_LINES_PER_FILE = 5000
+// 窗口归属分界：≤1 天算短窗口（历史上的 5h），更长算长窗口（7d）。
+// 2026-07 起 Codex 把周额度直接写进 primary、secondary 置 null，老日志才是 primary=300 分钟 + secondary=10080 分钟；
+// 所以窗口归属只认 window_minutes，绝不认槽位，否则周额度会被贴上「5 小时」的标签。
+const SHORT_WINDOW_MAX_MINUTES = 1440
 
 /**
  * 把额度百分比归一化为 [0,100] 整数；无效值返回 null。
@@ -53,32 +57,77 @@ function toResetUnixSeconds(value) {
 }
 
 /**
- * 把 Codex rate_limits 原始结构归一化成 Claude-shape snapshot。
- * 字段名与 claudeUsageStatusService 的 snapshot 完全一致，前端 UsageRow 零改动复用。
+ * 归一化窗口长度（分钟）；缺失 / 0 / 负 / 非数一律 null。
+ * @param {unknown} value - 原始 window_minutes
+ * @returns {number|null}
+ */
+function toWindowMinutes(value) {
+  const num = Number(value)
+  if (!Number.isFinite(num) || num <= 0) return null
+  return Math.round(num)
+}
+
+/**
+ * 把一个原始额度桶（primary / secondary）归一化成窗口对象。
+ * 归属只看 window_minutes；只有 Codex 没写这个字段时才退回槽位语义兜底。
+ *
+ * @param {unknown} raw - 原始桶（含 used_percent / window_minutes / resets_at）
+ * @param {'short'|'long'} slotKind - window_minutes 缺失时的兜底归属
+ * @returns {{kind:'short'|'long', windowMinutes:number|null, usedPercent:number, resetsAt:number|null}|null}
+ */
+function toWindowBucket(raw, slotKind) {
+  if (!raw || typeof raw !== 'object') return null
+
+  const usedPercent = clampPercentage(raw.used_percent)
+  // 没有有效百分比的桶不算窗口（Codex 现在会把不存在的窗口整个写成 null）
+  if (usedPercent === null) return null
+
+  const windowMinutes = toWindowMinutes(raw.window_minutes)
+  const kind = windowMinutes === null
+    ? slotKind
+    : (windowMinutes <= SHORT_WINDOW_MAX_MINUTES ? 'short' : 'long')
+
+  return { kind, windowMinutes, usedPercent, resetsAt: toResetUnixSeconds(raw.resets_at) }
+}
+
+/**
+ * 把 Codex rate_limits 原始结构归一化成 snapshot。
+ *
+ * `windows` 是事实源：账号有几个窗口就有几项，前端按它渲染，标签由 windowMinutes 推出，
+ * 不再假设「一定是 5h + 7d 两条」。fiveHour / sevenDay 系列字段保留，与 Claude snapshot 同名，
+ * 供尚未迁移到 windows 的消费方兜底。
  *
  * @param {object} rateLimits - payload.rate_limits（含 primary / secondary）
  * @param {Date|null} timestamp - 行级 timestamp（写入时刻，作为 updatedAt 来源）
- * @returns {{fiveHourUsedPercentage:number|null, sevenDayUsedPercentage:number|null, resetsAt:number|null, sevenDayResetsAt:number|null, updatedAt:number|null, hasRateLimits:boolean}}
+ * @returns {{windows:Array<{windowMinutes:number|null, usedPercent:number, resetsAt:number|null}>, fiveHourUsedPercentage:number|null, sevenDayUsedPercentage:number|null, resetsAt:number|null, sevenDayResetsAt:number|null, updatedAt:number|null, hasRateLimits:boolean}}
  */
 function normalizeCodexSnapshot(rateLimits, timestamp) {
   const primary = rateLimits && typeof rateLimits === 'object' ? rateLimits.primary : null
   const secondary = rateLimits && typeof rateLimits === 'object' ? rateLimits.secondary : null
 
-  const fiveHourUsedPercentage = clampPercentage(primary?.used_percent)
-  const sevenDayUsedPercentage = clampPercentage(secondary?.used_percent)
+  const buckets = [toWindowBucket(primary, 'short'), toWindowBucket(secondary, 'long')].filter(Boolean)
+
+  // 窗口从短到长排，UI 按这个顺序渲染；window_minutes 缺失的排最后
+  const windows = buckets
+    .map(({ windowMinutes, usedPercent, resetsAt }) => ({ windowMinutes, usedPercent, resetsAt }))
+    .sort((a, b) => (a.windowMinutes ?? Number.MAX_SAFE_INTEGER) - (b.windowMinutes ?? Number.MAX_SAFE_INTEGER))
+
+  const shortWindow = buckets.find((bucket) => bucket.kind === 'short') || null
+  const longWindow = buckets.find((bucket) => bucket.kind === 'long') || null
 
   // updatedAt 来自行级 timestamp（ISO 字符串 → unix 秒）；非法时间戳 → null（不触发 stale）
   const tsMs = timestamp instanceof Date ? timestamp.getTime() : NaN
   const updatedAt = Number.isFinite(tsMs) ? Math.floor(tsMs / 1000) : null
 
   return {
-    fiveHourUsedPercentage,
-    sevenDayUsedPercentage,
-    resetsAt: toResetUnixSeconds(primary?.resets_at),
-    sevenDayResetsAt: toResetUnixSeconds(secondary?.resets_at),
+    windows,
+    fiveHourUsedPercentage: shortWindow ? shortWindow.usedPercent : null,
+    sevenDayUsedPercentage: longWindow ? longWindow.usedPercent : null,
+    resetsAt: shortWindow ? shortWindow.resetsAt : null,
+    sevenDayResetsAt: longWindow ? longWindow.resetsAt : null,
     updatedAt,
-    // 至少一个窗口有有效百分比才算真的拿到了额度
-    hasRateLimits: fiveHourUsedPercentage !== null || sevenDayUsedPercentage !== null
+    // 至少读到一个窗口才算真的拿到了额度
+    hasRateLimits: windows.length > 0
   }
 }
 
@@ -218,7 +267,10 @@ module.exports = {
   getCodexUsageStatusState,
   getLatestCodexRateLimits,
   normalizeCodexSnapshot,
+  toWindowBucket,
   clampPercentage,
   toResetUnixSeconds,
-  LOOKBACK_DAYS
+  toWindowMinutes,
+  LOOKBACK_DAYS,
+  SHORT_WINDOW_MAX_MINUTES
 }
